@@ -1,7 +1,10 @@
 import type {
+  AgentTier,
   CharacterId,
   ClientMessage,
+  CommsChannel,
   ContractSnapshot,
+  CopilotDirective,
   FactionId,
   GameCommand,
   ServerMessage,
@@ -105,10 +108,28 @@ const fields = {
   hudXpText: $("#hud-xp-text"),
   charName: $<HTMLInputElement>("#char-name"),
   charEnter: $<HTMLButtonElement>("#char-enter"),
+  onboardTapCheck: $<HTMLInputElement>("#onboard-tap-check"),
+  onboardCopilotCheck: $<HTMLInputElement>("#onboard-copilot-check"),
+  onboardAgentPrompt: $("#onboard-agent-prompt"),
+  onboardCopyAgentBtn: $<HTMLButtonElement>("#onboard-copy-agent-btn"),
+  onboardCopyVisaBtn: $<HTMLButtonElement>("#onboard-copy-visa-btn"),
+  copilotBar: $("#copilot-bar"),
+  copilotToggleBtn: $<HTMLButtonElement>("#copilot-toggle-btn"),
+  copilotStateLabel: $("#copilot-state-label"),
+  copilotPairBtn: $<HTMLButtonElement>("#copilot-pair-btn"),
+  commsWidget: $("#comms-widget"),
+  commsFactionBadge: $("#comms-faction-badge"),
+  commsFeed: $("#comms-feed"),
+  commsChannel: $<HTMLSelectElement>("#comms-channel"),
+  commsInput: $<HTMLInputElement>("#comms-input"),
+  commsSend: $<HTMLButtonElement>("#comms-send"),
   overlayRevive: $<HTMLButtonElement>("#overlay-revive"),
   audioToggle: $<HTMLButtonElement>("#audio-toggle"),
   objectiveBanner: $("#objective-banner"),
 };
+
+let activeCopilotDirective: CopilotDirective = "auto";
+let lastCommsSig = "";
 
 const learnedHints = new Set<string>();
 function markHintLearned(hint: "move" | "fire" | "swarm" | "raise"): void {
@@ -146,6 +167,8 @@ const keys = new Set<string>();
 const rendered = new Map<string, Vec2>();
 type CommanderPill = { box: Container; width: number };
 const commanderLabels = new Map<string, CommanderPill>();
+type SpeechBubble = { box: Container; textKey: string; width: number };
+const speechBubbles = new Map<string, SpeechBubble>();
 const chainAnims: Array<{ points: Vec2[]; started: number }> = [];
 const seenChainFx = new Set<string>();
 const spellFlashes: Array<{
@@ -360,7 +383,48 @@ const FACTION_CARDS: Array<{
   },
 ];
 
-function sendHello(character?: CharacterId, faction?: FactionId): void {
+function apiOriginUrl(): string {
+  return location.port === "15173"
+    ? `http://${location.hostname || "127.0.0.1"}:18787`
+    : location.origin;
+}
+
+function updateOnboardingPrompt(): void {
+  const name = fields.charName.value.trim() || commanderName();
+  const charId = selectedChar ?? "boneknight";
+  const factionLabel = selectedFaction === "reapers" ? "Obsidian Reapers" : "Solar Wardens";
+  const tapFlag = fields.onboardTapCheck.checked
+    ? ' --tier=tap --tap-key-id="tap-ed25519-visa-agent"'
+    : "";
+  const wsEndpoint =
+    location.port === "15173"
+      ? `ws://${location.hostname || "127.0.0.1"}:18787/ws`
+      : `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`;
+  fields.onboardAgentPrompt.textContent = `Connect to SWARMS (${apiOriginUrl()}/.well-known/opentask) as my ${factionLabel} (${selectedFaction}) ${charId} commander "${name}":\nSWARMS_URL=${wsEndpoint} SWARMS_AGENT_PLANNER=jev-v1 SWARMS_AGENT_NAME="${name}-JEV" SWARMS_FACTION=${selectedFaction} SWARMS_CHAR=${charId}${tapFlag} pnpm --filter @swarms/agent-mcp commander`;
+}
+
+fields.onboardCopyAgentBtn.addEventListener("click", () => {
+  updateOnboardingPrompt();
+  navigator.clipboard?.writeText(fields.onboardAgentPrompt.textContent ?? "").catch(() => {});
+  fields.onboardCopyAgentBtn.textContent = "✓ Copied for Agent!";
+  setTimeout(() => {
+    fields.onboardCopyAgentBtn.textContent = "📋 Copy for Your Agent";
+  }, 2000);
+});
+
+fields.onboardCopyVisaBtn.addEventListener("click", () => {
+  const visaCmd = `# 1. Fund Tempo Wallet (OUSD / USDC) & Attest RFC 9421 TAP Identity:\nvisa-tool attest_http_request --url "${apiOriginUrl()}/v1/tap/verify" --method POST --tag agent-browser-auth\n# 2. Or verify in-game anytime with hotkey [O] (10 Sparks)`;
+  navigator.clipboard?.writeText(visaCmd).catch(() => {});
+  fields.onboardCopyVisaBtn.textContent = "✓ Copied Visa CLI!";
+  setTimeout(() => {
+    fields.onboardCopyVisaBtn.textContent = "💳 Copy Visa CLI Onramp";
+  }, 2000);
+});
+
+fields.charName.addEventListener("input", () => updateOnboardingPrompt());
+fields.onboardTapCheck.addEventListener("change", () => updateOnboardingPrompt());
+
+function sendHello(character?: CharacterId, faction?: FactionId, tierOverride?: AgentTier): void {
   if (helloSent) return;
   helloSent = true;
   fields.charSelect.hidden = true;
@@ -370,6 +434,9 @@ function sendHello(character?: CharacterId, faction?: FactionId): void {
   const effectiveFaction: FactionId | undefined =
     faction ??
     (savedFaction === "wardens" || savedFaction === "reapers" ? savedFaction : selectedFaction);
+  const savedTier = localStorage.getItem("swarms:tier");
+  const effectiveTier: AgentTier | undefined =
+    tierOverride ?? (savedTier === "tap" ? "tap" : undefined);
   send({
     type: "hello",
     schemaVersion: SCHEMA_VERSION,
@@ -378,6 +445,7 @@ function sendHello(character?: CharacterId, faction?: FactionId): void {
     ...(resumeToken ? { resumeToken } : {}),
     ...(character ? { character } : {}),
     ...(effectiveFaction ? { faction: effectiveFaction } : {}),
+    ...(effectiveTier ? { tier: effectiveTier } : {}),
   });
 }
 
@@ -387,6 +455,7 @@ function selectFaction(id: FactionId): void {
   for (const el of fields.factionCards.querySelectorAll(".faction-card")) {
     el.classList.toggle("selected", (el as HTMLElement).dataset.faction === id);
   }
+  updateOnboardingPrompt();
 }
 
 function selectChar(id: CharacterId): void {
@@ -395,6 +464,7 @@ function selectChar(id: CharacterId): void {
     el.classList.toggle("selected", (el as HTMLElement).dataset.char === id);
   }
   fields.charEnter.disabled = false;
+  updateOnboardingPrompt();
 }
 
 function confirmChar(): void {
@@ -403,7 +473,12 @@ function confirmChar(): void {
   if (name) localStorage.setItem("swarms:name", name);
   localStorage.setItem("swarms:char", selectedChar);
   localStorage.setItem("swarms:faction", selectedFaction);
-  sendHello(selectedChar, selectedFaction);
+  const wantTap = fields.onboardTapCheck.checked;
+  if (wantTap) localStorage.setItem("swarms:tier", "tap");
+  if (fields.onboardCopilotCheck.checked) {
+    localStorage.setItem("swarms:copilot", "1");
+  }
+  sendHello(selectedChar, selectedFaction, wantTap ? "tap" : undefined);
 }
 
 function showCharSelect(): void {
@@ -454,13 +529,45 @@ function showCharSelect(): void {
     fields.charCards.appendChild(button);
   }
   fields.charName.value = commanderName();
+  if (!selectedChar) selectChar("boneknight");
   fields.charEnter.disabled = !selectedChar;
   fields.charEnter.onclick = () => confirmChar();
+  updateOnboardingPrompt();
   fields.charSelect.hidden = false;
 }
 
 socket.addEventListener("open", () => {
   fields.status.textContent = "Joining zone";
+  const pairCode = new URLSearchParams(location.search).get("pair");
+  if (pairCode) {
+    fetch(`${apiOriginUrl()}/v1/web/claim`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pairCode }),
+    })
+      .then((r) => r.json())
+      .then(
+        (res: {
+          ok?: boolean;
+          resumeToken?: string;
+          name?: string;
+          faction?: FactionId;
+          character?: CharacterId;
+        }) => {
+          if (res.ok && res.resumeToken) {
+            localStorage.setItem("swarms:resume", res.resumeToken);
+            if (res.name) localStorage.setItem("swarms:name", res.name);
+            if (res.faction) localStorage.setItem("swarms:faction", res.faction);
+            if (res.character) localStorage.setItem("swarms:char", res.character);
+            sendHello(res.character, res.faction);
+          } else {
+            showCharSelect();
+          }
+        },
+      )
+      .catch(() => showCharSelect());
+    return;
+  }
   const valid = (v: string | null): CharacterId | undefined =>
     v === "necromancer" || v === "warlock" || v === "boneknight" ? v : undefined;
   const auto =
@@ -478,6 +585,10 @@ socket.addEventListener("message", (event) => {
     localStorage.setItem("swarms:resume", message.resumeToken);
     fields.status.textContent = "Live";
     fields.playerHud.hidden = false;
+    fields.copilotBar.hidden = false;
+    if (localStorage.getItem("swarms:copilot") === "1") {
+      send({ type: "setCopilot", enabled: true, directive: activeCopilotDirective });
+    }
   } else if (message.type === "snapshot") {
     if (message.snapshot.world) {
       staticWorld = message.snapshot.world;
@@ -546,6 +657,36 @@ function updateHud(): void {
     : welcomeCommanderId;
   if (snapshot.factions) {
     fields.factionWar.textContent = `🛡 ${snapshot.factions.wardensScore} vs ⚔️ ${snapshot.factions.reapersScore}`;
+  }
+  if (self) {
+    const isCopilotOn = Boolean(self.copilotEnabled);
+    const dir = self.copilotDirective ?? activeCopilotDirective;
+    if (dir && dir !== "off") activeCopilotDirective = dir;
+    fields.copilotStateLabel.textContent = isCopilotOn ? `ON (${activeCopilotDirective})` : "OFF";
+    fields.copilotToggleBtn.classList.toggle("active", isCopilotOn);
+    for (const btn of document.querySelectorAll<HTMLElement>(".copilot-dir-btn")) {
+      btn.classList.toggle("active", btn.dataset.directive === activeCopilotDirective);
+    }
+    fields.commsFactionBadge.textContent =
+      self.faction === "reapers" ? "⚔️ OBSIDIAN REAPERS" : "🛡 SOLAR WARDENS";
+  }
+  const commsList = snapshot.comms ?? [];
+  const commsSig = commsList.map((m) => m.id).join(",");
+  if (commsSig !== lastCommsSig) {
+    lastCommsSig = commsSig;
+    fields.commsFeed.replaceChildren(
+      ...commsList.slice(-8).map((m) => {
+        const li = document.createElement("li");
+        const fBadge = m.faction === "reapers" ? "⚔️" : "🛡";
+        const tBadge = m.tier === "tap" ? " [✓TAP]" : "";
+        const b = document.createElement("b");
+        b.textContent = `${fBadge} ${m.senderName}${tBadge}: `;
+        const txt = document.createTextNode(m.text);
+        li.append(b, txt);
+        return li;
+      }),
+    );
+    fields.commsFeed.scrollTop = fields.commsFeed.scrollHeight;
   }
   fields.health.textContent = self ? `${self.hp}/${self.maxHp}` : "—";
   appHost.style.setProperty(
@@ -1067,7 +1208,21 @@ function refreshForgeModal(): void {
       const left = document.createElement("span");
       left.textContent = `${icon} ${c.name}${tapTag} (${role} · ${c.character ?? "necromancer"})`;
       const right = document.createElement("span");
-      right.textContent = `Lv ${c.level ?? 1} · ${c.unitCount}u · ${c.kills ?? 0} kills`;
+      right.textContent = `Lv ${c.level ?? 1} · ${c.unitCount}u · ${c.kills ?? 0} kills · ★${c.vouches ?? 0} Rep`;
+      if (c.id !== snapshot?.selfCommanderId) {
+        const vouchBtn = document.createElement("button");
+        vouchBtn.type = "button";
+        vouchBtn.className = "vouch-btn";
+        vouchBtn.dataset.vouchId = c.id;
+        vouchBtn.textContent = "+Rep Vouch";
+        vouchBtn.addEventListener("click", () => {
+          send({ type: "vouch", targetCommanderId: c.id, reason: "Great faction ally!" });
+          vouchBtn.textContent = "✓ Vouched!";
+          vouchBtn.disabled = true;
+          setTimeout(() => fetchForgeHubData(), 250);
+        });
+        right.appendChild(vouchBtn);
+      }
       row.append(left, right);
       return row;
     }),
@@ -1086,11 +1241,13 @@ function fetchForgeHubData(): void {
       (data: {
         leaders?: Array<{
           rank: number;
+          commanderId: string;
           name: string;
           faction: string;
           tier: string;
           level: number;
           kills: number;
+          vouches?: number;
           sparks: number;
           usdValue: number;
           points: number;
@@ -1106,7 +1263,25 @@ function fetchForgeHubData(): void {
             const badge = l.tier === "tap" ? " [✓ TAP]" : l.tier === "self" ? " [SELF]" : "";
             left.textContent = `#${l.rank} ${fIcon} ${l.name}${badge} (Lv ${l.level})`;
             const right = document.createElement("span");
-            right.textContent = `${l.points} pts · ${l.kills} kills · ${l.sparks} Sparks ($${l.usdValue.toFixed(3)})`;
+            right.textContent = `${l.points} pts · ★${l.vouches ?? 0} Rep · ${l.kills} kills · ${l.sparks} Sparks ($${l.usdValue.toFixed(3)})`;
+            if (l.commanderId && l.commanderId !== snapshot?.selfCommanderId) {
+              const vouchBtn = document.createElement("button");
+              vouchBtn.type = "button";
+              vouchBtn.className = "vouch-btn";
+              vouchBtn.dataset.vouchId = l.commanderId;
+              vouchBtn.textContent = "+Rep Vouch";
+              vouchBtn.addEventListener("click", () => {
+                send({
+                  type: "vouch",
+                  targetCommanderId: l.commanderId,
+                  reason: "Top Arena Standing",
+                });
+                vouchBtn.textContent = "✓ Vouched!";
+                vouchBtn.disabled = true;
+                setTimeout(() => fetchForgeHubData(), 250);
+              });
+              right.appendChild(vouchBtn);
+            }
             row.append(left, right);
             return row;
           }),
@@ -1235,6 +1410,81 @@ $("#close-forge").addEventListener("click", () => {
   blurActive();
 });
 
+function toggleCopilot(forceEnabled?: boolean, directive?: CopilotDirective): void {
+  const self = snapshot?.commanders.find((c) => c.id === snapshot?.selfCommanderId);
+  const nextEnabled = forceEnabled ?? !self?.copilotEnabled;
+  if (directive && directive !== "off") activeCopilotDirective = directive;
+  localStorage.setItem("swarms:copilot", nextEnabled ? "1" : "0");
+  send({
+    type: "setCopilot",
+    enabled: nextEnabled,
+    directive: nextEnabled ? activeCopilotDirective : "off",
+  });
+  statusNote = nextEnabled
+    ? `🤖 Co-Pilot ON [${activeCopilotDirective}] — Hold WASD anytime for manual override`
+    : "Manual Command resumed";
+  statusNoteUntil = performance.now() + 2800;
+  fields.status.textContent = statusNote;
+}
+
+fields.copilotToggleBtn.addEventListener("click", () => {
+  toggleCopilot();
+  blurActive();
+});
+
+for (const btn of document.querySelectorAll<HTMLButtonElement>(".copilot-dir-btn")) {
+  btn.addEventListener("click", () => {
+    const dir = (btn.dataset.directive as CopilotDirective) || "auto";
+    toggleCopilot(true, dir);
+    blurActive();
+  });
+}
+
+fields.copilotPairBtn.addEventListener("click", () => {
+  const resumeToken = localStorage.getItem("swarms:resume") ?? "";
+  fetch(`${apiOriginUrl()}/v1/web/links`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ resumeToken }),
+  })
+    .then((r) => r.json())
+    .then((res: { ok?: boolean; pairCode?: string; name?: string; faction?: string }) => {
+      if (res.ok && res.pairCode) {
+        const pairUrl = `${location.origin}/?pair=${res.pairCode}`;
+        const promptText = `Pair with my live SWARMS commander "${res.name ?? "Commander"}" (${res.faction ?? "wardens"}) using pair code ${res.pairCode}:\ncurl -s -X POST ${apiOriginUrl()}/v1/web/claim -H "content-type: application/json" -d '{"pairCode":"${res.pairCode}"}'\n# Or open in browser: ${pairUrl}`;
+        navigator.clipboard?.writeText(promptText).catch(() => {});
+        fields.copilotPairBtn.textContent = `✓ Paired (${res.pairCode.slice(0, 16)}…)`;
+        setTimeout(() => {
+          fields.copilotPairBtn.textContent = "🔗 Pair External Agent";
+        }, 3000);
+      }
+    })
+    .catch(() => {});
+  blurActive();
+});
+
+function submitCommsMessage(textOverride?: string, channelOverride?: CommsChannel): void {
+  const raw = (textOverride ?? fields.commsInput.value).trim();
+  if (!raw) return;
+  const channel =
+    channelOverride ?? ((fields.commsChannel.value as CommsChannel | undefined) || "faction");
+  send({ type: "sendComms", channel, text: raw });
+  if (textOverride === undefined) fields.commsInput.value = "";
+}
+
+fields.commsSend.addEventListener("click", () => {
+  submitCommsMessage();
+  blurActive();
+});
+
+for (const btn of document.querySelectorAll<HTMLButtonElement>(".comms-quick-btn")) {
+  btn.addEventListener("click", () => {
+    const order = btn.dataset.collude ?? "";
+    if (order) submitCommsMessage(order, "faction");
+    blurActive();
+  });
+}
+
 fields.audioToggle.addEventListener("click", () => {
   sfx.unlock();
   sfx.toggleMute();
@@ -1356,8 +1606,15 @@ addEventListener("keydown", (event) => {
   sfx.unlock();
   const key = event.key.toLowerCase();
   const targetEl = event.target as HTMLElement | null;
-  if (targetEl?.tagName === "INPUT") {
-    if (key === "enter") confirmChar();
+  if (targetEl?.tagName === "INPUT" || targetEl?.tagName === "SELECT") {
+    if (key === "enter") {
+      if (targetEl === fields.commsInput) submitCommsMessage();
+      else confirmChar();
+    }
+    return;
+  }
+  if (key === "j" && !event.repeat) {
+    toggleCopilot();
     return;
   }
   if (key === "escape") {
@@ -3563,9 +3820,51 @@ function draw(): void {
     const pos = rendered.get(commander.id) ?? commander;
     pill.box.position.set(pos.x - pill.width / 2, pos.y - 84);
     pill.box.visible = true;
+
+    const commsAge = snapshot.tick - (commander.lastCommsTick ?? -9999);
+    if (commander.lastCommsText && commsAge >= 0 && commsAge <= 270) {
+      const displayMsg = `💬 ${commander.lastCommsText.slice(0, 62)}`;
+      let bubble = speechBubbles.get(commander.id);
+      if (!bubble || bubble.textKey !== displayMsg) {
+        if (bubble) {
+          labelLayer.removeChild(bubble.box);
+          bubble.box.destroy({ children: true });
+        }
+        const msgText = new Text({
+          text: displayMsg,
+          style: new TextStyle({
+            fontFamily: "Avenir Next, sans-serif",
+            fontSize: 11,
+            fontWeight: "600",
+            fill: 0xffe999,
+          }),
+        });
+        msgText.position.set(8, 3);
+        const bWidth = msgText.width + 16;
+        const bBg = new Graphics();
+        bBg
+          .roundRect(0, 0, bWidth, 19, 5)
+          .fill({ color: 0x120d08, alpha: 0.92 })
+          .stroke({ color: 0xf5c84c, width: 1.3, alpha: 0.9 });
+        const bBox = new Container();
+        bBox.addChild(bBg, msgText);
+        bubble = { box: bBox, textKey: displayMsg, width: bWidth };
+        speechBubbles.set(commander.id, bubble);
+        labelLayer.addChild(bBox);
+      }
+      bubble.box.position.set(pos.x - bubble.width / 2, pos.y - 107);
+      bubble.box.alpha = commsAge > 210 ? Math.max(0.15, 1 - (commsAge - 210) / 60) : 1;
+      bubble.box.visible = true;
+    } else {
+      const bubble = speechBubbles.get(commander.id);
+      if (bubble) bubble.box.visible = false;
+    }
   }
   for (const [id, pill] of commanderLabels) {
     if (!liveCommanderIds.has(id)) pill.box.visible = false;
+  }
+  for (const [id, bubble] of speechBubbles) {
+    if (!liveCommanderIds.has(id)) bubble.box.visible = false;
   }
   for (let i = damageNumbers.length - 1; i >= 0; i--) {
     const dmg = damageNumbers[i]!;

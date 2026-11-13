@@ -1,6 +1,11 @@
 import type {
+  AgentTier,
+  CharacterId,
   ClientMessage,
+  CommsChannel,
   ContractDraft,
+  CopilotDirective,
+  FactionId,
   GameCommand,
   ServerMessage,
   ZoneSnapshot,
@@ -32,6 +37,10 @@ export class SwarmClient {
     name: string;
     kind?: "human" | "agent";
     resumeToken?: string;
+    character?: CharacterId;
+    faction?: FactionId;
+    tier?: AgentTier;
+    tapKeyId?: string;
   }): Promise<Welcome> {
     const ws = new WebSocket(this.url);
     this.ws = ws;
@@ -44,6 +53,10 @@ export class SwarmClient {
           name: input.name,
           kind: input.kind ?? "agent",
           ...(input.resumeToken ? { resumeToken: input.resumeToken } : {}),
+          ...(input.character ? { character: input.character } : {}),
+          ...(input.faction ? { faction: input.faction } : {}),
+          ...(input.tier ? { tier: input.tier } : {}),
+          ...(input.tapKeyId ? { tapKeyId: input.tapKeyId } : {}),
         });
       });
       ws.on("message", (data) => {
@@ -108,6 +121,26 @@ export class SwarmClient {
 
   acceptContract(idempotencyKey: string, contractId: string): void {
     this.raw({ type: "acceptContract", idempotencyKey, contractId });
+  }
+
+  sendComms(channel: CommsChannel, text: string): void {
+    this.raw({ type: "sendComms", channel, text });
+  }
+
+  setCopilot(enabled: boolean, directive?: CopilotDirective): void {
+    this.raw({
+      type: "setCopilot",
+      enabled,
+      ...(directive ? { directive } : {}),
+    });
+  }
+
+  vouch(targetCommanderId: string, reason?: string): void {
+    this.raw({
+      type: "vouch",
+      targetCommanderId,
+      ...(reason ? { reason } : {}),
+    });
   }
 
   ping(): void {

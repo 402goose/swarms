@@ -45,3 +45,12 @@ epics:
         touches: ["packages/agent-sdk/src/**", "apps/agent/src/**"]
         acceptance: "Headless and in-process JEV-v1 agents evaluate combat threat fields, cast spells, and claim bounties deterministically."
         check: ".plan/checks/agent-policy.test.mjs"
+      - id: collusion-copilot-vouch-and-onboarding
+        title: "Forge-style Send-to-Agent onboarding, AGY/JEV Co-Pilot [J], Faction Collusion Comms & Peer Vouching"
+        kind: build
+        reward_usd: 10.00
+        mode: bounty
+        blocked_by: [autonomous-jev-tap-policy]
+        touches: ["apps/server/src/**", "apps/web/src/**", "apps/web/index.html", "packages/protocol/src/**"]
+        acceptance: "Onboarding deck generates 1-click Agent & Visa CLI commands, Co-Pilot [J] drives commanders autonomously, Faction Comms trigger allied JEV-v1 collusion replies, and peer vouching enforces ERC-8004 no-self-vouch with 3x TAP weight."
+        check: ".plan/checks/collusion-copilot-vouch.test.mjs"

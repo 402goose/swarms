@@ -19,6 +19,7 @@ import {
 import type {
   AgentTier,
   CommanderSnapshot,
+  CopilotDirective,
   EntitySnapshot,
   FactionId,
   GameCommand,
@@ -104,6 +105,12 @@ export interface CommanderState {
   tapKeyId?: string;
   tapRegistry?: string;
   kills?: number;
+  copilotEnabled?: boolean;
+  copilotDirective?: CopilotDirective;
+  copilotSparksEarned?: number;
+  vouches?: number;
+  lastCommsText?: string;
+  lastCommsTick?: number;
 }
 
 export interface BattleEntity {
@@ -2523,6 +2530,13 @@ export class SimWorld {
       ...(c.tapKeyId ? { tapKeyId: c.tapKeyId } : {}),
       ...(c.tapRegistry ? { tapRegistry: c.tapRegistry } : {}),
       ...(c.kills ? { kills: c.kills } : {}),
+      ...(c.copilotEnabled ? { copilotEnabled: c.copilotEnabled } : {}),
+      ...(c.copilotDirective ? { copilotDirective: c.copilotDirective } : {}),
+      ...(c.copilotSparksEarned ? { copilotSparksEarned: c.copilotSparksEarned } : {}),
+      ...(c.vouches ? { vouches: c.vouches } : {}),
+      ...(c.lastCommsText && c.lastCommsTick && this.tick - c.lastCommsTick <= 180
+        ? { lastCommsText: c.lastCommsText, lastCommsTick: c.lastCommsTick }
+        : {}),
       inSanctuary: this.inEntry(c),
     }));
   }

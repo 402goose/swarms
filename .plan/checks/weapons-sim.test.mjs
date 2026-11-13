@@ -1,3 +1,3 @@
 import { execFileSync } from "node:child_process";
 
-execFileSync("pnpm", ["test", "tests/sim.test.ts"], { stdio: "inherit" });
+execFileSync("pnpm", ["test", "tests/core.test.ts"], { stdio: "inherit" });

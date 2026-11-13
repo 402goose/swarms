@@ -551,6 +551,217 @@ kbd {
   margin-left: 4px;
 }
 
+.onboarding-deck {
+  margin-top: 12px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.onboarding-options-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.onboarding-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid rgba(217, 180, 91, 0.35);
+  background: rgba(20, 16, 12, 0.92);
+  font-size: 11.5px;
+  color: #dcd5be;
+  cursor: pointer;
+}
+.onboarding-toggle b {
+  color: #f1d36b;
+}
+.onboarding-send-card {
+  border: 1px solid rgba(245, 200, 76, 0.5);
+  background: rgba(16, 12, 9, 0.96);
+  padding: 9px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.onboarding-send-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.onboarding-send-head strong {
+  display: block;
+  font-size: 12.5px;
+  color: #f1d36b;
+}
+.onboarding-send-actions {
+  display: flex;
+  gap: 6px;
+}
+.onboarding-send-card code {
+  display: block;
+  padding: 6px 8px;
+  border: 1px solid rgba(217, 180, 91, 0.28);
+  background: #070504;
+  color: #e8dfc4;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 76px;
+  overflow-y: auto;
+}
+
+.copilot-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 204px;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+  width: min(680px, calc(100vw - 24px));
+  padding: 5px 8px;
+  border: 1px solid rgba(217, 180, 91, 0.45);
+  background: rgba(12, 10, 8, 0.92);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+}
+.copilot-bar[hidden] {
+  display: none;
+}
+.copilot-toggle {
+  font-size: 11.5px;
+  padding: 4px 9px;
+  border-color: rgba(159, 232, 255, 0.55);
+  color: #d8f6ff;
+}
+.copilot-toggle.active {
+  background: rgba(54, 150, 110, 0.35);
+  border-color: #6df0b2;
+  color: #b8ffdc;
+}
+.copilot-directives {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.copilot-dir-btn {
+  font-size: 11px;
+  padding: 3px 7px;
+  opacity: 0.82;
+}
+.copilot-dir-btn.active {
+  opacity: 1;
+  border-color: #f5c84c;
+  background: rgba(245, 200, 76, 0.22);
+  color: #ffe380;
+}
+.copilot-pair {
+  font-size: 11px;
+  padding: 3px 8px;
+  margin-left: auto;
+}
+
+.comms-widget {
+  position: fixed;
+  left: 14px;
+  bottom: 92px;
+  z-index: 6;
+  width: min(330px, calc(100vw - 28px));
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  pointer-events: auto;
+}
+.comms-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.comms-badge {
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border: 1px solid rgba(245, 200, 76, 0.5);
+  color: #f5c84c;
+  background: rgba(40, 30, 12, 0.7);
+}
+.comms-quick-row {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.comms-quick-btn {
+  font-size: 10px;
+  padding: 2px 6px;
+  flex: 1;
+  white-space: nowrap;
+}
+.comms-feed {
+  list-style: none;
+  margin: 0;
+  padding: 4px 6px;
+  max-height: 92px;
+  min-height: 48px;
+  overflow-y: auto;
+  background: rgba(6, 5, 4, 0.78);
+  border: 1px solid rgba(217, 180, 91, 0.22);
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.comms-feed li {
+  line-height: 1.3;
+  color: #ddd6c1;
+}
+.comms-feed li b {
+  color: #f1d36b;
+}
+.comms-input-row {
+  display: flex;
+  gap: 4px;
+}
+.comms-input-row select {
+  background: #0d0a08;
+  border: 1px solid rgba(217, 180, 91, 0.4);
+  color: #f3ead2;
+  font-size: 11px;
+  padding: 3px 4px;
+}
+.comms-input-row input {
+  flex: 1;
+  min-width: 0;
+  background: #0d0a08;
+  border: 1px solid rgba(217, 180, 91, 0.4);
+  color: #f3ead2;
+  font-size: 11px;
+  padding: 4px 6px;
+}
+.comms-input-row button {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+.vouch-btn {
+  font-size: 10px;
+  padding: 2px 6px;
+  margin-left: 6px;
+  border-color: rgba(245, 200, 76, 0.55);
+  color: #ffe380;
+  background: rgba(60, 45, 12, 0.45);
+  cursor: pointer;
+}
+.vouch-btn:hover {
+  background: rgba(245, 200, 76, 0.3);
+}
+
 @media (max-width: 980px) {
   .board { width: 320px; }
   .hud-top, .controls { max-width: calc(100vw - 362px); }

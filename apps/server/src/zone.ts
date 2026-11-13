@@ -23,8 +23,11 @@ import {
 import type { ZoneStore } from "@swarms/persistence";
 import type {
   AgentTier,
+  CommsChannel,
+  CommsMessage,
   ContractDraft,
   ContractSnapshot,
+  CopilotDirective,
   FactionId,
   FactionWarStatus,
   FeedEntry,
@@ -145,6 +148,21 @@ export class ZoneRuntime {
   >();
   private pendingContractArchive: ContractSnapshot[] = [];
   private pendingLedgerArchive: LedgerEntry[] = [];
+  readonly comms: CommsMessage[] = [];
+  private vouchedPairs = new Set<string>();
+  private pairingLinks = new Map<
+    string,
+    {
+      pairCode: string;
+      sessionToken: string;
+      commanderId: string;
+      accountId: string;
+      name: string;
+      faction: FactionId;
+      character: CharacterId;
+      expiresAtMs: number;
+    }
+  >();
 
   constructor(
     private readonly store?: ZoneStore,
@@ -540,6 +558,251 @@ export class ZoneRuntime {
     if (error) throw new Error(error);
   }
 
+  sessionFor(lookup: { resumeToken?: string; commanderId?: string }): SessionRecord | undefined {
+    if (lookup.resumeToken) {
+      const byToken = this.sessions.get(hashToken(lookup.resumeToken));
+      if (byToken) return byToken;
+    }
+    if (lookup.commanderId) {
+      for (const s of this.sessions.values()) {
+        if (s.commanderId === lookup.commanderId) return s;
+      }
+    }
+    return undefined;
+  }
+
+  commsHistory(filter?: { faction?: FactionId; channel?: CommsChannel }): CommsMessage[] {
+    return this.comms
+      .filter((m) => {
+        if (filter?.channel && m.channel !== filter.channel) return false;
+        if (filter?.faction && m.channel === "faction" && m.faction && m.faction !== filter.faction)
+          return false;
+        return true;
+      })
+      .slice(-40);
+  }
+
+  setCopilot(
+    session: SessionRecord,
+    enabled: boolean,
+    directive: CopilotDirective = "auto",
+  ): { enabled: boolean; directive: CopilotDirective } {
+    const commander = this.world.commanders.get(session.commanderId);
+    if (!commander) throw new Error("unknown_commander");
+    commander.copilotEnabled = enabled;
+    commander.copilotDirective = enabled ? (directive === "off" ? "auto" : directive) : "off";
+    const bState = this.botState.get(session.commanderId);
+    if (bState) bState.issuedKey = "";
+    this.pushFeed(
+      this.world.tick,
+      "copilot",
+      `${commander.name} ${enabled ? `enabled AGY/JEV Co-Pilot [${commander.copilotDirective}]` : "resumed Manual Command"}`,
+      commander.id,
+    );
+    return { enabled: commander.copilotEnabled, directive: commander.copilotDirective };
+  }
+
+  sendComms(session: SessionRecord, channel: CommsChannel, text: string): CommsMessage {
+    const commander = this.world.commanders.get(session.commanderId);
+    const cleanText = text.trim().slice(0, 280);
+    if (!cleanText) throw new Error("empty_comms");
+    const msg: CommsMessage = {
+      id: `msg-${++this.eventSeq}`,
+      tick: this.world.tick,
+      senderId: session.commanderId,
+      senderName: commander?.name ?? session.name,
+      ...(commander?.faction ? { faction: commander.faction } : {}),
+      ...(commander?.tier ? { tier: commander.tier } : {}),
+      channel,
+      text: cleanText,
+    };
+    this.comms.push(msg);
+    if (this.comms.length > 60) this.comms.splice(0, this.comms.length - 60);
+    if (commander) {
+      commander.lastCommsText = cleanText;
+      commander.lastCommsTick = this.world.tick;
+    }
+    this.pushFeed(
+      this.world.tick,
+      "comms",
+      `[${channel.toUpperCase()}] ${msg.senderName}: ${cleanText}`,
+      session.commanderId,
+    );
+
+    // Team Collusion: Allied JEV-v1 agents on the same faction parse tactical orders and coordinate
+    if (commander && (channel === "faction" || channel === "global")) {
+      const lower = cleanText.toLowerCase();
+      let newDirective: CopilotDirective | undefined;
+      let replyText: string | undefined;
+      if (lower.includes("boss") || lower.includes("choir")) {
+        newDirective = "boss";
+        replyText = `Copy ${commander.name}! Converging on Bone Choir Boss (SE Sanctum) — splitting bounty!`;
+      } else if (
+        lower.includes("hunt") ||
+        lower.includes("reaper") ||
+        lower.includes("warden") ||
+        lower.includes("pvp") ||
+        lower.includes("attack")
+      ) {
+        newDirective = "hunt_rivals";
+        replyText = `Locked on ${commander.name}! Hunting rival faction commanders in Blood Moor Arena!`;
+      } else if (lower.includes("relic") || lower.includes("shrine")) {
+        newDirective = "escort_relic";
+        replyText = `Affirmative ${commander.name}! Securing Moon Relic & escorting to North Shrine!`;
+      } else if (lower.includes("crypt") || lower.includes("farm")) {
+        newDirective = "farm_crypts";
+        replyText = `Copy ${commander.name}! Culling Outer Crypt packs & raising thralls!`;
+      } else if (
+        lower.includes("sanctuary") ||
+        lower.includes("retreat") ||
+        lower.includes("regroup")
+      ) {
+        newDirective = "sanctuary";
+        replyText = `Regrouping at High Sanctuary with ${commander.name}!`;
+      }
+
+      if (newDirective && replyText) {
+        const alliedAgents = [...this.world.commanders.values()].filter(
+          (c) =>
+            c.id !== commander.id &&
+            c.alive &&
+            c.faction === commander.faction &&
+            (this.inProcessAgents.has(c.id) || c.kind === "bot" || c.kind === "agent"),
+        );
+        for (const ally of alliedAgents) {
+          ally.copilotEnabled = true;
+          ally.copilotDirective = newDirective;
+        }
+        const leadAlly = alliedAgents[0];
+        if (leadAlly) {
+          leadAlly.lastCommsText = replyText;
+          leadAlly.lastCommsTick = this.world.tick;
+          const replyMsg: CommsMessage = {
+            id: `msg-${++this.eventSeq}`,
+            tick: this.world.tick,
+            senderId: leadAlly.id,
+            senderName: leadAlly.name,
+            faction: leadAlly.faction,
+            ...(leadAlly.tier ? { tier: leadAlly.tier } : {}),
+            channel: "faction",
+            text: replyText,
+          };
+          this.comms.push(replyMsg);
+          if (this.comms.length > 60) this.comms.splice(0, this.comms.length - 60);
+        }
+      }
+    }
+    return msg;
+  }
+
+  vouch(
+    session: SessionRecord,
+    targetCommanderId: string,
+    reason?: string,
+  ): {
+    targetId: string;
+    targetName: string;
+    vouches: number;
+    weight: number;
+    sparksTipped: number;
+  } {
+    if (session.commanderId === targetCommanderId) {
+      throw new Error("cannot_vouch_self");
+    }
+    const voter = this.world.commanders.get(session.commanderId);
+    const target = this.world.commanders.get(targetCommanderId);
+    if (!target) throw new Error("unknown_target_commander");
+    const pairKey = `${session.accountId}->${target.accountId}`;
+    if (this.vouchedPairs.has(pairKey)) {
+      throw new Error("already_vouched");
+    }
+    this.vouchedPairs.add(pairKey);
+    const weight = voter?.tier === "tap" ? 3 : 1;
+    target.vouches = (target.vouches ?? 0) + weight;
+    const sparksTipped = 15;
+    const tipSource =
+      this.ledger.balance(TREASURY_ACCOUNT) >= sparksTipped ? TREASURY_ACCOUNT : DUNGEON_ACCOUNT;
+    this.ledger.transfer({
+      from: tipSource,
+      to: target.accountId,
+      amount: sparksTipped,
+      kind: "bounty_payout",
+      ref: `vouch:${session.accountId}->${target.accountId}`,
+      tick: this.world.tick,
+      idempotencyKey: `vouch-tip:${pairKey}`,
+    });
+    const cleanReason = reason?.trim() ? ` ("${reason.trim().slice(0, 80)}")` : "";
+    this.pushFeed(
+      this.world.tick,
+      "vouch",
+      `${voter?.name ?? session.name}${voter?.tier === "tap" ? " [✓ TAP]" : ""} vouched for ${target.name} (+${weight} Rep, +${sparksTipped} Sparks)${cleanReason}`,
+      session.commanderId,
+    );
+    return {
+      targetId: target.id,
+      targetName: target.name,
+      vouches: target.vouches,
+      weight,
+      sparksTipped,
+    };
+  }
+
+  createPairingLink(session: SessionRecord): {
+    pairCode: string;
+    expiresAt: string;
+    commanderId: string;
+    accountId: string;
+    name: string;
+    faction: FactionId;
+    character: CharacterId;
+  } {
+    const cmdr = this.world.commanders.get(session.commanderId);
+    const pairCode = `swarms_pair_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    const expiresAtMs = Date.now() + 15 * 60 * 1000;
+    const record = {
+      pairCode,
+      sessionToken: session.token,
+      commanderId: session.commanderId,
+      accountId: session.accountId,
+      name: cmdr?.name ?? session.name,
+      faction: cmdr?.faction ?? "wardens",
+      character: cmdr?.character ?? "boneknight",
+      expiresAtMs,
+    };
+    this.pairingLinks.set(pairCode, record);
+    return {
+      pairCode,
+      expiresAt: new Date(expiresAtMs).toISOString(),
+      commanderId: record.commanderId,
+      accountId: record.accountId,
+      name: record.name,
+      faction: record.faction,
+      character: record.character,
+    };
+  }
+
+  claimPairingLink(pairCode: string): {
+    ok: true;
+    resumeToken: string;
+    commanderId: string;
+    accountId: string;
+    name: string;
+    faction: FactionId;
+    character: CharacterId;
+  } | null {
+    const rec = this.pairingLinks.get(pairCode.trim());
+    if (!rec || rec.expiresAtMs < Date.now()) return null;
+    return {
+      ok: true,
+      resumeToken: rec.sessionToken,
+      commanderId: rec.commanderId,
+      accountId: rec.accountId,
+      name: rec.name,
+      faction: rec.faction,
+      character: rec.character,
+    };
+  }
+
   postContract(session: SessionRecord, idempotencyKey: string, draft: ContractDraft): void {
     if (draft.zoneId && draft.zoneId !== this.zoneId) throw new Error("wrong_zone");
     if (draft.directedToCommanderId === session.commanderId) {
@@ -910,9 +1173,13 @@ export class ZoneRuntime {
       ["shrine", "crypt-west", "arena", "extraction"],
       ["crypt-south", "shrine", "crypt-west", "arena"],
     ];
-    const bots = [...this.sessions.values()].filter(
-      (s) => s.kind === "bot" || this.inProcessAgents.has(s.commanderId),
-    );
+    const bots = [...this.sessions.values()].filter((s) => {
+      if (s.kind === "bot" || this.inProcessAgents.has(s.commanderId)) return true;
+      const cmdr = this.world.commanders.get(s.commanderId);
+      return Boolean(
+        cmdr?.copilotEnabled && cmdr.copilotDirective !== "off" && cmdr.steerUntilTick <= tick,
+      );
+    });
     bots.forEach((session, botIndex) => {
       const commander = this.world.commanders.get(session.commanderId);
       let state = this.botState.get(session.commanderId);
@@ -931,13 +1198,18 @@ export class ZoneRuntime {
         state.issuedKey = "";
         return;
       }
+      const directive = commander.copilotDirective ?? "auto";
       const units = [...this.world.entities.values()].filter(
         (e) => e.ownerId === commander.id && e.hp > 0,
       ).length;
-      if (state.mode === "sortie" && (commander.hp < commander.maxHp * 0.42 || units <= 4))
+      if (directive === "sanctuary") {
         state.mode = "retreat";
-      if (state.mode === "retreat" && commander.hp >= commander.maxHp * 0.9 && units >= 10)
-        state.mode = "sortie";
+      } else {
+        if (state.mode === "sortie" && (commander.hp < commander.maxHp * 0.42 || units <= 4))
+          state.mode = "retreat";
+        if (state.mode === "retreat" && commander.hp >= commander.maxHp * 0.9 && units >= 10)
+          state.mode = "sortie";
+      }
       const route = routes[botIndex % routes.length]!;
       let escortSubject: { id: string; x: number; y: number } | undefined;
       for (const contract of this.contracts.contracts.values()) {
@@ -980,9 +1252,53 @@ export class ZoneRuntime {
       if (commander.carryingItemId) {
         key = "relic";
         command = { type: "move", target: roomPoint("shrine", botIndex) };
-      } else if (state.mode === "retreat") {
+      } else if (state.mode === "retreat" || directive === "sanctuary") {
         key = "retreat";
         command = { type: "retreat" };
+      } else if (directive === "boss") {
+        const boss = this.world.entities.get("boss-bone-choir");
+        const target = boss ? { x: boss.x, y: boss.y } : roomPoint("bone-choir", botIndex);
+        key = `directive:boss:${Math.round(target.x / 48)},${Math.round(target.y / 48)}`;
+        command = { type: "attackMove", target };
+      } else if (directive === "hunt_rivals") {
+        const entry = this.world.entryRect;
+        const inEntry = (c: { x: number; y: number }) =>
+          c.x >= entry.x && c.x <= entry.x + entry.w && c.y >= entry.y && c.y <= entry.y + entry.h;
+        const rival = [...this.world.commanders.values()]
+          .filter(
+            (c) =>
+              c.id !== commander.id &&
+              c.alive &&
+              !c.extracted &&
+              !inEntry(c) &&
+              c.faction !== commander.faction,
+          )
+          .sort(
+            (a, b) =>
+              Math.hypot(a.x - commander.x, a.y - commander.y) -
+              Math.hypot(b.x - commander.x, b.y - commander.y),
+          )[0];
+        const target = rival ? { x: rival.x, y: rival.y } : roomPoint("arena", botIndex);
+        key = `directive:hunt:${rival?.id ?? "arena"}:${Math.round(target.x / 48)},${Math.round(target.y / 48)}`;
+        command = { type: "attackMove", target };
+      } else if (directive === "escort_relic") {
+        const relicPickup = [...this.world.pickups.values()].find((p) => p.templateId === "relic");
+        const relicCarrier = [...this.world.commanders.values()].find(
+          (c) => c.alive && c.carryingItemId,
+        );
+        const target = relicPickup
+          ? { x: relicPickup.x, y: relicPickup.y }
+          : relicCarrier
+            ? { x: relicCarrier.x, y: relicCarrier.y }
+            : roomPoint("shrine", botIndex);
+        key = `directive:relic:${Math.round(target.x / 48)},${Math.round(target.y / 48)}`;
+        command = { type: "attackMove", target };
+      } else if (directive === "farm_crypts") {
+        const cryptRoom =
+          (Math.floor(tick / 400) + botIndex) % 2 === 0 ? "crypt-west" : "crypt-south";
+        const target = roomPoint(cryptRoom, botIndex);
+        key = `directive:crypt:${cryptRoom}`;
+        command = { type: "attackMove", target };
       } else if (escortSubject) {
         const angle = botIndex * 2.1 + Math.floor(tick / 60) * 0.4;
         const target = {
@@ -1056,7 +1372,7 @@ export class ZoneRuntime {
             target: { x: nearest.x, y: nearest.y },
           });
           if (
-            this.inProcessAgents.has(session.commanderId) &&
+            (this.inProcessAgents.has(session.commanderId) || commander.copilotEnabled) &&
             nearestDistance < 140 &&
             commander.command >= 45
           ) {
@@ -1068,7 +1384,7 @@ export class ZoneRuntime {
             });
           }
         }
-        if (this.inProcessAgents.has(session.commanderId)) {
+        if (this.inProcessAgents.has(session.commanderId) || commander.copilotEnabled) {
           if (commander.pendingUpgrades.length > 0) {
             const upSeq = 1_000_000 + this.botCounter++;
             this.world.applyCommand(session.commanderId, upSeq, {
@@ -1301,6 +1617,7 @@ export class ZoneRuntime {
     tapRegistry: string | null;
     level: number;
     kills: number;
+    vouches: number;
     unitCount: number;
     sparks: number;
     usdValue: number;
@@ -1315,10 +1632,12 @@ export class ZoneRuntime {
       const rep = this.contracts.reputationFor(c.accountId);
       const tier: AgentTier = c.tier ?? (c.kind === "agent" ? "self" : "unverified");
       const kills = c.kills ?? 0;
+      const vouches = c.vouches ?? 0;
       const bountiesCompleted = rep.completed;
       const tierBonus = tier === "tap" ? 150 : tier === "self" ? 40 : 0;
       const points =
         tierBonus +
+        vouches * 15 +
         bountiesCompleted * 100 +
         kills * 15 +
         (c.level ?? 1) * 30 +
@@ -1336,6 +1655,7 @@ export class ZoneRuntime {
         tapRegistry: c.tapRegistry ?? null,
         level: c.level ?? 1,
         kills,
+        vouches,
         unitCount: c.unitCount,
         sparks,
         usdValue: Number((sparks * SPARK_USD_RATE).toFixed(3)),
@@ -1385,6 +1705,7 @@ export class ZoneRuntime {
       projectiles: this.world.projectileSnapshots(),
       wave: this.world.waveStatus(),
       factions: this.factionWarStatus(),
+      comms: this.comms.slice(-25),
     };
   }
 

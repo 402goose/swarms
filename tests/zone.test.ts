@@ -798,4 +798,66 @@ describe("persistent zone runtime", () => {
     expect(wish.touches).toContain("packages/sim/src/**");
     expect(wish.checkScript).toBe(".plan/checks/weapons-sim.test.mjs");
   });
+
+  it("coordinates faction collusion comms, autonomous AGY/JEV co-pilot, peer vouching, and session pairing", () => {
+    const runtime = new ZoneRuntime();
+    const wardenLeader = runtime.join({
+      name: "WardenSovereign",
+      kind: "human",
+      character: "boneknight",
+      faction: "wardens",
+      tier: "tap",
+    });
+    const wardenAlly = runtime.join({
+      name: "WardenJEV",
+      kind: "agent",
+      character: "necromancer",
+      faction: "wardens",
+    });
+
+    // 1. Enable Co-Pilot on human commander and step the simulation
+    const copilotRes = runtime.setCopilot(wardenLeader, true, "boss");
+    expect(copilotRes.enabled).toBe(true);
+    expect(copilotRes.directive).toBe("boss");
+    const leaderBefore = { ...runtime.world.commanders.get(wardenLeader.commanderId)! };
+    for (let i = 0; i < 15; i++) runtime.step();
+    const leaderAfter = runtime.world.commanders.get(wardenLeader.commanderId)!;
+    expect(
+      Math.hypot(leaderAfter.x - leaderBefore.x, leaderAfter.y - leaderBefore.y),
+    ).toBeGreaterThan(2);
+
+    // 2. Faction War Comms & Team Collusion: Allied JEV-v1 replies and pivots directive
+    const msg = runtime.sendComms(
+      wardenLeader,
+      "faction",
+      "Rush Bone Choir Boss in SE Sanctum — split bounty!",
+    );
+    expect(msg.channel).toBe("faction");
+    const allyState = runtime.world.commanders.get(wardenAlly.commanderId)!;
+    expect(allyState.copilotDirective).toBe("boss");
+    expect(allyState.lastCommsText).toContain("Bone Choir Boss");
+    const commsHistory = runtime.commsHistory({ faction: "wardens" });
+    expect(commsHistory.length).toBeGreaterThanOrEqual(2);
+
+    // 3. Peer-to-Peer Reputation Vouching (ERC-8004 no-self-vouch + 3x TAP weight + 15 Sparks tip)
+    expect(() => runtime.vouch(wardenLeader, wardenLeader.commanderId)).toThrow(
+      "cannot_vouch_self",
+    );
+    const sparksBefore = runtime.ledger.balance(wardenAlly.accountId);
+    const vouchRes = runtime.vouch(wardenLeader, wardenAlly.commanderId, "Elite boss tank!");
+    expect(vouchRes.weight).toBe(3);
+    expect(vouchRes.vouches).toBe(3);
+    expect(vouchRes.sparksTipped).toBe(15);
+    expect(runtime.ledger.balance(wardenAlly.accountId)).toBe(sparksBefore + 15);
+    const allyRank = runtime.leaderboard().find((l) => l.commanderId === wardenAlly.commanderId);
+    expect(allyRank?.vouches).toBe(3);
+
+    // 4. Web-to-Agent Session Pairing Link
+    const link = runtime.createPairingLink(wardenLeader);
+    expect(link.pairCode).toContain("swarms_pair_");
+    const claimed = runtime.claimPairingLink(link.pairCode);
+    expect(claimed?.ok).toBe(true);
+    expect(claimed?.commanderId).toBe(wardenLeader.commanderId);
+    expect(claimed?.resumeToken).toBe(wardenLeader.token);
+  });
 });

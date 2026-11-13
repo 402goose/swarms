@@ -23,14 +23,20 @@ import {
   type SpellReadyAt,
   tactical,
 } from "@swarms/commander";
-import type { ZoneSnapshot } from "@swarms/protocol";
+import type { AgentTier, CharacterId, FactionId, ZoneSnapshot } from "@swarms/protocol";
 import { generateDungeon } from "@swarms/worldgen";
 
-const url = process.env.SWARMS_WS_URL ?? "ws://127.0.0.1:18787/ws";
+const url = process.env.SWARMS_URL ?? process.env.SWARMS_WS_URL ?? "ws://127.0.0.1:18787/ws";
 const seed = Number(process.env.SWARMS_SEED ?? 1337);
 const dungeon = generateDungeon(seed);
 const map: MapInfo = { rooms: dungeon.rooms, tileSize: dungeon.tileSize };
-const baseName = process.env.COMMANDER_NAME ?? "Sable";
+const baseName = process.env.SWARMS_AGENT_NAME ?? process.env.COMMANDER_NAME ?? "Sable";
+const factionEnv = process.env.SWARMS_FACTION as FactionId | undefined;
+const charEnv = process.env.SWARMS_CHAR as CharacterId | undefined;
+const tierArg = process.argv.find((a) => a.startsWith("--tier="))?.split("=")[1];
+const tapKeyArg = process.argv.find((a) => a.startsWith("--tap-key-id="))?.split("=")[1];
+const tierEnv = (tierArg ?? process.env.SWARMS_TIER) as AgentTier | undefined;
+const tapKeyEnv = tapKeyArg ?? process.env.SWARMS_TAP_KEY_ID;
 const plannerMs = Number(process.env.COMMANDER_PLANNER_MS ?? 4000);
 const timeoutMs = Number(process.env.COMMANDER_TIMEOUT_MS ?? 15_000);
 const maxPostReward = Number(process.env.COMMANDER_MAX_POST_REWARD ?? 150);
@@ -222,6 +228,10 @@ async function main(): Promise<void> {
     name: displayName,
     kind: "agent",
     ...(resumeToken ? { resumeToken } : {}),
+    ...(factionEnv ? { faction: factionEnv } : {}),
+    ...(charEnv ? { character: charEnv } : {}),
+    ...(tierEnv ? { tier: tierEnv } : {}),
+    ...(tapKeyEnv ? { tapKeyId: tapKeyEnv } : {}),
   });
   mkdirSync(dirname(resumePath), { recursive: true });
   writeFileSync(resumePath, welcome.resumeToken, { mode: 0o600 });

@@ -108,6 +108,45 @@
           <p class="draft-hint">Click or press 1 · 2 · 3 — unpicked boons auto-pick in 10s</p>
         </div>
       </div>
+      <section id="copilot-bar" class="copilot-bar" aria-label="AGY and JEV-v1 Co-Pilot Command Bar" hidden>
+        <button id="copilot-toggle-btn" class="copilot-toggle" type="button" title="Toggle Autonomous JEV-v1 Co-Pilot [J] — Hold WASD anytime for manual override">
+          🤖 Co-Pilot [J]: <strong id="copilot-state-label">OFF</strong>
+        </button>
+        <div class="copilot-directives" role="group" aria-label="Co-Pilot Strategic Directives">
+          <button type="button" class="copilot-dir-btn active" data-directive="auto" title="Full Autonomous Loop: Bounties -> Crypts -> Boss -> Extract">⚡ Auto</button>
+          <button type="button" class="copilot-dir-btn" data-directive="boss" title="Focus Bone Choir Boss (SE Sanctum)">💀 Boss</button>
+          <button type="button" class="copilot-dir-btn" data-directive="hunt_rivals" title="Hunt Rival Faction Commanders in Blood Moor PvP">⚔️ Hunt Rivals</button>
+          <button type="button" class="copilot-dir-btn" data-directive="farm_crypts" title="Cull Outer Crypts &amp; Raise Corpse Swarm">🦴 Crypts</button>
+          <button type="button" class="copilot-dir-btn" data-directive="escort_relic" title="Recover &amp; Deliver Moon Relic to North Shrine">🌙 Relic</button>
+          <button type="button" class="copilot-dir-btn" data-directive="sanctuary" title="Retreat &amp; Regroup in High Sanctuary Safe Haven">🏛 Sanctuary</button>
+        </div>
+        <button id="copilot-pair-btn" class="copilot-pair" type="button" title="Generate a 1-click pairing token for Claude Code / Antigravity / OpenClaw to co-pilot this commander">
+          🔗 Pair External Agent
+        </button>
+      </section>
+
+      <aside id="comms-widget" class="hud comms-widget" aria-label="Faction War Comms and Team Collusion">
+        <div class="comms-head">
+          <span class="eyebrow">Faction War Comms &amp; Collusion</span>
+          <span id="comms-faction-badge" class="comms-badge">SOLAR WARDENS</span>
+        </div>
+        <div class="comms-quick-row" role="group" aria-label="Quick Tactical Collusion Orders">
+          <button type="button" class="comms-quick-btn" data-collude="Rush Bone Choir Boss in SE Sanctum — split bounty!">💀 Rush Boss</button>
+          <button type="button" class="comms-quick-btn" data-collude="Hunt rival commanders in Blood Moor Arena!">⚔️ Hunt Rivals</button>
+          <button type="button" class="comms-quick-btn" data-collude="Escort Moon Relic to North Shrine!">🌙 Relic</button>
+          <button type="button" class="comms-quick-btn" data-collude="Regroup at High Sanctuary!">🏛 Regroup</button>
+        </div>
+        <ol id="comms-feed" class="comms-feed"></ol>
+        <div class="comms-input-row">
+          <select id="comms-channel" aria-label="Comms channel">
+            <option value="faction">Faction</option>
+            <option value="global">Global</option>
+          </select>
+          <input id="comms-input" type="text" maxlength="200" placeholder="Coordinate with allied agents (Enter to send)…" autocomplete="off" />
+          <button id="comms-send" type="button">Send</button>
+        </div>
+      </aside>
+
       <section id="player-hud" aria-label="Commander status" hidden>
         <img id="hud-portrait" src="/assets/commander.png" alt="" />
         <div class="hud-main">
@@ -133,9 +172,34 @@
           <div id="char-cards" class="char-cards"></div>
           <div class="char-name-row">
             <input id="char-name" type="text" maxlength="24" autocomplete="off" aria-label="Commander name" />
-            <button id="char-enter" type="button" disabled>Enter the dungeon</button>
+            <button id="char-enter" type="button" disabled>Enter the dungeon (500 Free Sparks)</button>
           </div>
-          <p class="draft-hint">Class is permanent for this commander — pick, then enter. Keys 1 · 2 · 3 select, Enter confirms. Returning commanders resume automatically.</p>
+          <div id="onboarding-agent-deck" class="onboarding-deck">
+            <div class="onboarding-options-row">
+              <label class="onboarding-toggle">
+                <input id="onboard-tap-check" type="checkbox" />
+                <span><b>✓ Visa TAP Sovereign</b> — Start with RFC 9421 Attested Halo, +35 HP &amp; [K] Orbital Edict</span>
+              </label>
+              <label class="onboarding-toggle">
+                <input id="onboard-copilot-check" type="checkbox" />
+                <span><b>🤖 AGY / JEV-v1 Co-Pilot [J]</b> — Let your AI drive &amp; farm while you guide or override with WASD</span>
+              </label>
+            </div>
+            <div class="onboarding-send-card">
+              <div class="onboarding-send-head">
+                <div>
+                  <span class="eyebrow">Send to your agent · Claude Code / Antigravity / OpenClaw / Visa CLI</span>
+                  <strong>Deploy or Pair an Autonomous Agent with Your Exact Loadout</strong>
+                </div>
+                <div class="onboarding-send-actions">
+                  <button id="onboard-copy-agent-btn" class="forge-btn" type="button">📋 Copy for Your Agent</button>
+                  <button id="onboard-copy-visa-btn" type="button">💳 Copy Visa CLI Onramp</button>
+                </div>
+              </div>
+              <code id="onboard-agent-prompt">Select your Faction and Class above to generate your 1-click Agent &amp; Visa TAP deployment prompt…</code>
+            </div>
+          </div>
+          <p class="draft-hint">Play free immediately (500 Sparks = $0.50 grant), win Sparks/USDC from rival bounties, or copy the prompt above to send your agent in! Keys 1 · 2 · 3 select, Enter confirms.</p>
         </div>
       </div>
 

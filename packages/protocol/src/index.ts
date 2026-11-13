@@ -56,6 +56,20 @@ export type FactionId = z.infer<typeof FactionIdSchema>;
 export const AgentTierSchema = z.enum(["tap", "self", "unverified"]);
 export type AgentTier = z.infer<typeof AgentTierSchema>;
 
+export const CopilotDirectiveSchema = z.enum([
+  "off",
+  "auto",
+  "boss",
+  "hunt_rivals",
+  "farm_crypts",
+  "escort_relic",
+  "sanctuary",
+]);
+export type CopilotDirective = z.infer<typeof CopilotDirectiveSchema>;
+
+export const CommsChannelSchema = z.enum(["faction", "global", "forge"]);
+export type CommsChannel = z.infer<typeof CommsChannelSchema>;
+
 /** Micro-settlement rate: 1 Spark = $0.001 USD equivalent */
 export const SPARK_USD_RATE = 0.001;
 
@@ -222,6 +236,27 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ping"), at: z.number().optional() }).strict(),
   z.object({ type: z.literal("requestWorld") }).strict(),
   z.object({ type: z.literal("abandon") }).strict(),
+  z
+    .object({
+      type: z.literal("setCopilot"),
+      enabled: z.boolean(),
+      directive: CopilotDirectiveSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("sendComms"),
+      channel: CommsChannelSchema.default("faction"),
+      text: z.string().trim().min(1).max(280),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("vouch"),
+      targetCommanderId: z.string().min(1).max(128),
+      reason: z.string().max(140).optional(),
+    })
+    .strict(),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
@@ -290,6 +325,12 @@ export interface CommanderSnapshot {
   kills?: number;
   bountiesCompleted?: number;
   inSanctuary?: boolean;
+  copilotEnabled?: boolean;
+  copilotDirective?: CopilotDirective;
+  copilotSparksEarned?: number;
+  vouches?: number;
+  lastCommsText?: string;
+  lastCommsTick?: number;
 }
 
 export interface PickupSnapshot {
@@ -402,6 +443,17 @@ export interface FactionWarStatus {
   sparkUsdRate: number;
 }
 
+export interface CommsMessage {
+  id: string;
+  tick: number;
+  senderId: string;
+  senderName: string;
+  faction?: FactionId;
+  tier?: AgentTier;
+  channel: CommsChannel;
+  text: string;
+}
+
 export interface ZoneWorldSnapshot {
   widthTiles: number;
   heightTiles: number;
@@ -434,6 +486,7 @@ export interface ZoneSnapshot {
   effects?: SpellEffect[];
   wave?: WaveStatus;
   factions?: FactionWarStatus;
+  comms?: CommsMessage[];
 }
 
 export type ZoneSnapshotFrame = Omit<ZoneSnapshot, "world"> & {

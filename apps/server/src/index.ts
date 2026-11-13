@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, resolve } from "node:path";
 import { FileZoneStore } from "@swarms/persistence";
-import type { ContractStatus, ServerMessage } from "@swarms/protocol";
+import type { CommsChannel, ContractStatus, FactionId, ServerMessage } from "@swarms/protocol";
 import { parseClientMessage, SCHEMA_VERSION, SPARK_USD_RATE } from "@swarms/protocol";
 import { type WebSocket, WebSocketServer } from "ws";
 import {
@@ -251,6 +251,169 @@ const httpServer = createServer((request, response) => {
     });
     return;
   }
+  if (url.pathname === "/v1/comms") {
+    if (request.method === "GET") {
+      const factionParam = url.searchParams.get("faction") as FactionId | null;
+      const channelParam = url.searchParams.get("channel") as CommsChannel | null;
+      return json(
+        response,
+        200,
+        {
+          messages: runtime.commsHistory({
+            ...(factionParam ? { faction: factionParam } : {}),
+            ...(channelParam ? { channel: channelParam } : {}),
+          }),
+        },
+        origin,
+        reqHost,
+      );
+    }
+    if (request.method === "POST") {
+      let bodyText = "";
+      request.on("data", (chunk) => {
+        if (bodyText.length < 16_384) bodyText += String(chunk);
+      });
+      request.on("end", () => {
+        try {
+          const payload = JSON.parse(bodyText || "{}") as {
+            resumeToken?: string;
+            commanderId?: string;
+            channel?: CommsChannel;
+            text?: string;
+          };
+          const session = runtime.sessionFor({
+            ...(payload.resumeToken ? { resumeToken: payload.resumeToken } : {}),
+            ...(payload.commanderId ? { commanderId: payload.commanderId } : {}),
+          });
+          if (!session) {
+            return json(response, 404, { ok: false, error: "session_not_found" }, origin, reqHost);
+          }
+          const ch: CommsChannel =
+            payload.channel === "global" || payload.channel === "forge"
+              ? payload.channel
+              : "faction";
+          const created = runtime.sendComms(session, ch, String(payload.text ?? ""));
+          return json(
+            response,
+            201,
+            { ok: true, message: created, messages: runtime.commsHistory() },
+            origin,
+            reqHost,
+          );
+        } catch (err) {
+          return json(
+            response,
+            400,
+            { ok: false, error: err instanceof Error ? err.message : "invalid_comms" },
+            origin,
+            reqHost,
+          );
+        }
+      });
+      return;
+    }
+  }
+  if (url.pathname === "/v1/reputation/vouch" && request.method === "POST") {
+    let bodyText = "";
+    request.on("data", (chunk) => {
+      if (bodyText.length < 16_384) bodyText += String(chunk);
+    });
+    request.on("end", () => {
+      try {
+        const payload = JSON.parse(bodyText || "{}") as {
+          resumeToken?: string;
+          commanderId?: string;
+          targetCommanderId?: string;
+          reason?: string;
+        };
+        const session = runtime.sessionFor({
+          ...(payload.resumeToken ? { resumeToken: payload.resumeToken } : {}),
+          ...(payload.commanderId ? { commanderId: payload.commanderId } : {}),
+        });
+        if (!session) {
+          return json(response, 404, { ok: false, error: "session_not_found" }, origin, reqHost);
+        }
+        const result = runtime.vouch(
+          session,
+          String(payload.targetCommanderId ?? ""),
+          payload.reason,
+        );
+        return json(response, 200, { ok: true, vouch: result }, origin, reqHost);
+      } catch (err) {
+        return json(
+          response,
+          400,
+          { ok: false, error: err instanceof Error ? err.message : "invalid_vouch" },
+          origin,
+          reqHost,
+        );
+      }
+    });
+    return;
+  }
+  if (url.pathname === "/v1/web/links" && request.method === "POST") {
+    let bodyText = "";
+    request.on("data", (chunk) => {
+      if (bodyText.length < 16_384) bodyText += String(chunk);
+    });
+    request.on("end", () => {
+      try {
+        const payload = JSON.parse(bodyText || "{}") as {
+          resumeToken?: string;
+          commanderId?: string;
+        };
+        const session = runtime.sessionFor({
+          ...(payload.resumeToken ? { resumeToken: payload.resumeToken } : {}),
+          ...(payload.commanderId ? { commanderId: payload.commanderId } : {}),
+        });
+        if (!session) {
+          return json(response, 404, { ok: false, error: "session_not_found" }, origin, reqHost);
+        }
+        const link = runtime.createPairingLink(session);
+        return json(response, 201, { ok: true, ...link }, origin, reqHost);
+      } catch (err) {
+        return json(
+          response,
+          400,
+          { ok: false, error: err instanceof Error ? err.message : "invalid_link_request" },
+          origin,
+          reqHost,
+        );
+      }
+    });
+    return;
+  }
+  if (url.pathname === "/v1/web/claim" && request.method === "POST") {
+    let bodyText = "";
+    request.on("data", (chunk) => {
+      if (bodyText.length < 16_384) bodyText += String(chunk);
+    });
+    request.on("end", () => {
+      try {
+        const payload = JSON.parse(bodyText || "{}") as { pairCode?: string };
+        const claimed = runtime.claimPairingLink(String(payload.pairCode ?? ""));
+        if (!claimed) {
+          return json(
+            response,
+            404,
+            { ok: false, error: "invalid_or_expired_pair_code" },
+            origin,
+            reqHost,
+          );
+        }
+        return json(response, 200, claimed, origin, reqHost);
+      } catch (err) {
+        return json(
+          response,
+          400,
+          { ok: false, error: err instanceof Error ? err.message : "invalid_claim_request" },
+          origin,
+          reqHost,
+        );
+      }
+    });
+    return;
+  }
   if (url.pathname === "/health") return json(response, 200, runtime.health(), origin, reqHost);
   if (
     (url.pathname === "/v1/contracts" || url.pathname === "/v1/ledger") &&
@@ -455,6 +618,22 @@ wss.on("connection", (ws, request) => {
           detail: result.detail,
         });
         sendSnapshot(ws, state);
+      } else if (message.type === "setCopilot") {
+        runtime.setCopilot(session, message.enabled, message.directive);
+        send(ws, { type: "ack", ok: true });
+        sendSnapshot(ws, state);
+      } else if (message.type === "sendComms") {
+        runtime.sendComms(session, message.channel, message.text);
+        send(ws, { type: "ack", ok: true });
+        for (const [clientWs, clientState] of clients) {
+          sendSnapshot(clientWs, clientState);
+        }
+      } else if (message.type === "vouch") {
+        runtime.vouch(session, message.targetCommanderId, message.reason);
+        send(ws, { type: "ack", ok: true });
+        for (const [clientWs, clientState] of clients) {
+          sendSnapshot(clientWs, clientState);
+        }
       } else if (message.type === "requestWorld") {
         if (!state.worldRequests.tryTake()) throw new Error("world_request_budget_exceeded");
         state.worldSent = false;
