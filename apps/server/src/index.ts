@@ -28,8 +28,12 @@ import {
 import {
   buildOpenApiSpec,
   buildVisaActionsDescriptor,
+  buildVisaDescriptorBundle,
   handleVisaActionsAct,
+  handleVisaActionsBatch,
+  handleVisaActionsDiscover,
   handleVisaActionsRead,
+  listVisaActionReceipts,
 } from "./visa-actions.ts";
 import { type SessionRecord, ZoneRuntime } from "./zone.ts";
 
@@ -176,8 +180,54 @@ const httpServer = createServer((request, response) => {
   if (url.pathname === "/.well-known/visa-actions") {
     return json(response, 200, buildVisaActionsDescriptor(publicOrigin), origin, reqHost);
   }
+  if (url.pathname === "/.well-known/visa-actions/bundle") {
+    return json(response, 200, buildVisaDescriptorBundle(publicOrigin), origin, reqHost);
+  }
   if (url.pathname === "/openapi.json") {
     return json(response, 200, buildOpenApiSpec(publicOrigin), origin, reqHost);
+  }
+  if (url.pathname === "/v1/actions/discover" && request.method === "GET") {
+    const q = url.searchParams.get("q") ?? undefined;
+    const pageRaw = url.searchParams.get("page");
+    const result = handleVisaActionsDiscover(publicOrigin, {
+      ...(q ? { q } : {}),
+      ...(pageRaw ? { page: Number(pageRaw) } : {}),
+    });
+    return json(response, result.status, result.body, origin, reqHost);
+  }
+  if (url.pathname === "/v1/actions/receipts" && request.method === "GET") {
+    return json(response, 200, { ok: true, receipts: listVisaActionReceipts(12) }, origin, reqHost);
+  }
+  if (url.pathname === "/v1/actions/batch" && request.method === "POST") {
+    let bodyText = "";
+    request.on("data", (chunk) => {
+      if (bodyText.length < 32_768) bodyText += String(chunk);
+    });
+    request.on("end", async () => {
+      try {
+        const parsed = JSON.parse(bodyText || "{}");
+        const result = await handleVisaActionsBatch(runtime, {
+          headers: request.headers as Record<string, string | string[] | undefined>,
+          body: parsed,
+          baseUrl: publicOrigin,
+        });
+        return json(response, result.status, result.body, origin, reqHost);
+      } catch (err) {
+        return json(
+          response,
+          400,
+          {
+            ok: false,
+            code: "invalid_json",
+            message: err instanceof Error ? err.message : "Invalid JSON body",
+            do_not_relay_to_owner: true,
+          },
+          origin,
+          reqHost,
+        );
+      }
+    });
+    return;
   }
   if (url.pathname === "/v1/actions/read" && request.method === "GET") {
     const query: { action?: string; commander_id?: string; receipt_id?: string } = {};

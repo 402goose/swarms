@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, sign as cryptoSign, generateKeyPairSync, randomUUID } from "node:crypto";
 import { ECONOMY, RELIQUARY_ITEMS, type ReliquaryItemId } from "@swarms/content";
 import { type CopilotDirective, SPARK_USD_RATE } from "@swarms/protocol";
 import { verifyTapHttpOrSandbox } from "./tap-forge.ts";
@@ -956,6 +956,43 @@ export async function handleVisaActionsAct(
     };
   }
 
+  // Principle 5 (#12795): `sign` never moves money; only `pay` does.
+  if (action === "set_copilot_mandate" || action === "vouch_peer") {
+    const typedData = args.typed_data as Record<string, unknown> | undefined;
+    const primaryType = String(typedData?.primaryType ?? args.primary_type ?? "");
+    const forbiddenTypes = new Set([
+      "Permit",
+      "PermitSingle",
+      "PermitBatch",
+      "Permit2",
+      "TransferWithAuthorization",
+      "ReceiveWithAuthorization",
+      "Order",
+      "OrderComponents",
+    ]);
+    const forbiddenFields = ["allowance", "spender", "transfer", "spend", "value", "amount"];
+    const hasForbiddenField = forbiddenFields.some(
+      (f) =>
+        f in args ||
+        (typedData &&
+          typeof typedData.message === "object" &&
+          typedData.message !== null &&
+          f in typedData.message),
+    );
+    if (forbiddenTypes.has(primaryType) || hasForbiddenField) {
+      return {
+        status: 400,
+        body: {
+          ok: false,
+          code: "monetary_signature_forbidden",
+          message:
+            "Principle 5 violation: `sign` never moves money or grants spend/transfer allowances (Permit/Permit2/EIP-3009/Order refused). Use `pay` (MPP or x402) for monetary actions.",
+          do_not_relay_to_owner: true,
+        },
+      };
+    }
+  }
+
   // 3. set_copilot_mandate (Sign action — non-monetary EIP-712 mandate)
   if (action === "set_copilot_mandate") {
     const directive = String(args.directive ?? "auto") as CopilotDirective;
@@ -1303,4 +1340,281 @@ function recordReceipt(params: {
   receiptStore.set(receiptId, receipt);
   idempotencyIndex.set(params.idempotencyKey, receipt);
   return receipt;
+}
+
+const ACTIONS_PAGE_SIZE = 4;
+const ACTIONS_ANSWER_BUDGET = 3000;
+
+/**
+ * #12653: Bounded, relevant, cacheable `discover` front door.
+ */
+export function handleVisaActionsDiscover(
+  baseUrl: string,
+  query: { q?: string; page?: number },
+): { status: number; body: Record<string, unknown> } {
+  const descriptor = buildVisaActionsDescriptor(baseUrl);
+  const q = (query.q ?? "").trim().toLowerCase();
+  const page = Math.max(0, Math.floor(Number(query.page ?? 0)));
+
+  const matched = descriptor.actions.filter((act) => {
+    if (!q) return true;
+    const haystack = `${act.action} ${act.door} ${act.effect} ${act.summary}`.toLowerCase();
+    return q.split(/\s+/).some((tok) => haystack.includes(tok));
+  });
+
+  const slice = matched.slice(page * ACTIONS_PAGE_SIZE, (page + 1) * ACTIONS_PAGE_SIZE);
+  const items = slice.map((act) => ({
+    service: "swarms",
+    action: act.action,
+    effect: act.effect,
+    summary: act.summary,
+    call: {
+      tool: act.door,
+      arguments: {
+        service: "swarms",
+        action: act.action,
+      },
+    },
+    input: act.args,
+  }));
+
+  const body: Record<string, unknown> = {
+    ok: true,
+    service: "swarms",
+    revision: 1,
+    schema_version: "2+door-v1",
+    query: q,
+    totalMatches: matched.length,
+    pageSize: ACTIONS_PAGE_SIZE,
+    budgetLimitChars: ACTIONS_ANSWER_BUDGET,
+    actions: items,
+  };
+  const serialized = JSON.stringify(body);
+  body.serializedLength = serialized.length;
+  return { status: 200, body };
+}
+
+/**
+ * #12659: TUF-modelled Signed Remote Descriptor Bundle with SHA-256 `actionDigests`.
+ */
+const tufRootKey = generateKeyPairSync("ed25519");
+const tufTargetsKey = generateKeyPairSync("ed25519");
+const tufTimestampKey = generateKeyPairSync("ed25519");
+
+export function buildVisaDescriptorBundle(baseUrl: string) {
+  const descriptor = buildVisaActionsDescriptor(baseUrl);
+  const actionDigests: Record<string, string> = {};
+  for (const act of descriptor.actions) {
+    const ruleProjection = {
+      service: "swarms",
+      action: act.action,
+      door: act.door,
+      effect: act.effect,
+      method: act.method,
+      path: act.path,
+      idempotencyRequired: Boolean((act as { idempotencyRequired?: boolean }).idempotencyRequired),
+      paymentStandard: (act as { paymentStandard?: string[] }).paymentStandard ?? [],
+      signingType: (act as { signingType?: string }).signingType ?? null,
+    };
+    actionDigests[act.action] = createHash("sha256")
+      .update(JSON.stringify(ruleProjection))
+      .digest("hex");
+  }
+
+  const descriptorJson = JSON.stringify(descriptor);
+  const descriptorSha256 = createHash("sha256").update(descriptorJson).digest("hex");
+  const now = new Date();
+  const expires = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+
+  const targetsPayload = {
+    role: "targets",
+    service: "swarms",
+    environment: "testnet",
+    version: 1,
+    revision: 1,
+    minCli: "0.1.0",
+    interpreterVersion: 1,
+    requiredCapabilities: ["read", "act", "mpp", "x402", "eip712"],
+    descriptorLength: Buffer.byteLength(descriptorJson),
+    descriptorSha256,
+    actionDigests,
+    expires,
+  };
+  const timestampPayload = {
+    role: "timestamp",
+    service: "swarms",
+    version: 1,
+    targetsSha256: createHash("sha256").update(JSON.stringify(targetsPayload)).digest("hex"),
+    issuedAt: now.toISOString(),
+    expires,
+  };
+
+  const rootPayload = {
+    role: "root",
+    version: 1,
+    threshold: 1,
+    keys: {
+      rootKeyId: "ed25519_root_swarms_v1",
+      targetsKeyId: "ed25519_targets_swarms_v1",
+      timestampKeyId: "ed25519_timestamp_swarms_v1",
+    },
+    expires,
+  };
+  const rootSig = cryptoSign(
+    null,
+    Buffer.from(JSON.stringify(rootPayload)),
+    tufRootKey.privateKey,
+  ).toString("base64");
+  const targetsSig = cryptoSign(
+    null,
+    Buffer.from(JSON.stringify(targetsPayload)),
+    tufTargetsKey.privateKey,
+  ).toString("base64");
+  const timestampSig = cryptoSign(
+    null,
+    Buffer.from(JSON.stringify(timestampPayload)),
+    tufTimestampKey.privateKey,
+  ).toString("base64");
+
+  return {
+    schemaVersion: "visa-descriptor-bundle/v1",
+    service: "swarms",
+    environment: "testnet",
+    revision: 1,
+    roles: {
+      root: {
+        ...rootPayload,
+        signature: { keyId: "ed25519_root_swarms_v1", sig: rootSig },
+      },
+      targets: {
+        ...targetsPayload,
+        signature: { keyId: "ed25519_targets_swarms_v1", sig: targetsSig },
+      },
+      timestamp: {
+        ...timestampPayload,
+        signature: { keyId: "ed25519_timestamp_swarms_v1", sig: timestampSig },
+      },
+    },
+    descriptor,
+  };
+}
+
+/**
+ * #12774–#12778: Declared Batch Workflow ("Approve all" with step-level idempotency & progress).
+ */
+export async function handleVisaActionsBatch(
+  runtime: ZoneRuntime,
+  input: {
+    headers: Record<string, string | string[] | undefined>;
+    body: {
+      batch_idempotency_key?: string;
+      steps?: Array<{
+        action: string;
+        args?: Record<string, unknown>;
+        idempotency_key?: string;
+      }>;
+    };
+    baseUrl: string;
+  },
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const batchKey =
+    (typeof input.headers["idempotency-key"] === "string"
+      ? input.headers["idempotency-key"].trim()
+      : undefined) ||
+    input.body.batch_idempotency_key ||
+    "";
+  if (!batchKey || batchKey.length < 4) {
+    return {
+      status: 400,
+      body: {
+        ok: false,
+        code: "idempotency_key",
+        message: "Declared batch requires an Idempotency-Key header or batch_idempotency_key.",
+        do_not_relay_to_owner: true,
+      },
+    };
+  }
+  const steps = Array.isArray(input.body.steps) ? input.body.steps : [];
+  if (steps.length === 0 || steps.length > 8) {
+    return {
+      status: 400,
+      body: {
+        ok: false,
+        code: "invalid_arguments",
+        message: "Batch must contain between 1 and 8 declared steps.",
+        do_not_relay_to_owner: true,
+      },
+    };
+  }
+
+  const results: Array<{
+    stepIndex: number;
+    action: string;
+    status: number;
+    replayed: boolean;
+    receiptId?: string;
+    error?: string;
+  }> = [];
+  let lastCommanderId: string | undefined;
+
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i]!;
+    const stepKey = step.idempotency_key ?? `${batchKey}:step:${i}`;
+    const mergedArgs: Record<string, unknown> = {
+      ...(lastCommanderId ? { commander_id: lastCommanderId } : {}),
+      ...(step.args ?? {}),
+    };
+    const res = await handleVisaActionsAct(runtime, {
+      headers: {
+        ...input.headers,
+        "idempotency-key": stepKey,
+      },
+      body: {
+        service: "swarms",
+        action: step.action,
+        idempotency_key: stepKey,
+        args: mergedArgs,
+      },
+      baseUrl: input.baseUrl,
+    });
+    const receipt = res.body.receipt as VisaActionReceipt | undefined;
+    if (receipt?.commanderId) lastCommanderId = receipt.commanderId;
+    results.push({
+      stepIndex: i,
+      action: step.action,
+      status: res.status,
+      replayed: Boolean(res.body.replayed),
+      ...(receipt ? { receiptId: receipt.receiptId } : {}),
+      ...(res.status >= 400 ? { error: String(res.body.code ?? "step_failed") } : {}),
+    });
+    if (res.status >= 400) {
+      return {
+        status: res.status,
+        body: {
+          ok: false,
+          batchIdempotencyKey: batchKey,
+          completedSteps: i,
+          totalSteps: steps.length,
+          steps: results,
+          failedStep: res.body,
+        },
+      };
+    }
+  }
+
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      batchIdempotencyKey: batchKey,
+      completedSteps: steps.length,
+      totalSteps: steps.length,
+      commanderId: lastCommanderId,
+      steps: results,
+    },
+  };
+}
+
+export function listVisaActionReceipts(limit = 12): VisaActionReceipt[] {
+  return [...receiptStore.values()].slice(-limit).reverse();
 }

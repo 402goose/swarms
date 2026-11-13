@@ -372,9 +372,66 @@ async function runHarness() {
     const confirmReadBody = await confirmReadRes.json();
     assert.equal(confirmReadBody.confirmed, true);
     assert.equal(confirmReadBody.receipt.receiptId, receiptId);
+
+    // 10h. TUF-Signed Remote Descriptor Bundle (`/.well-known/visa-actions/bundle`) & Bounded `discover` (#12659 / #12653)
+    const bundleRes = await fetch(`${API_URL}/.well-known/visa-actions/bundle`);
+    assert.equal(bundleRes.status, 200);
+    const bundleBody = await bundleRes.json();
+    assert.equal(bundleBody.schemaVersion, "visa-descriptor-bundle/v1");
+    assert.equal(Object.keys(bundleBody.roles?.targets?.actionDigests ?? {}).length, 10);
+    assert(bundleBody.roles?.targets?.signature?.sig?.length > 10);
+
+    const discoverRes = await fetch(`${API_URL}/v1/actions/discover?q=bounty`);
+    assert.equal(discoverRes.status, 200);
+    const discoverBody = await discoverRes.json();
+    assert(discoverBody.actions.length > 0 && discoverBody.actions.length <= 4);
+    assert(discoverBody.serializedLength <= 3000);
+
+    // 10i. Principle 5 Guardrail: `sign` refuses monetary EIP-712 Permit / allowance fields
+    const permitAttemptRes = await fetch(`${API_URL}/v1/actions/act`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": `idem_permit_refusal_${Date.now()}`,
+      },
+      body: JSON.stringify({
+        service: "swarms",
+        action: "set_copilot_mandate",
+        args: {
+          commander_id: faucetBody.commanderId,
+          directive: "auto",
+          primary_type: "Permit2",
+          allowance: 1000,
+        },
+      }),
+    });
+    assert.equal(permitAttemptRes.status, 400);
+    const permitAttemptBody = await permitAttemptRes.json();
+    assert.equal(permitAttemptBody.code, "monetary_signature_forbidden");
+
+    // 10j. Declared Batch Workflow (`POST /v1/actions/batch` — #12774–#12778)
+    const batchRes = await fetch(`${API_URL}/v1/actions/batch`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": `idem_batch_${Date.now()}`,
+        authorization: `Payment ${faucetBody.testMppToken}`,
+      },
+      body: JSON.stringify({
+        steps: [
+          { action: "spawn_commander", args: { name: "BatchVanguard", faction: "wardens" } },
+          { action: "set_copilot_mandate", args: { directive: "boss" } },
+          { action: "buy_field_service", args: { service: "armory" } },
+        ],
+      }),
+    });
+    assert.equal(batchRes.status, 200);
+    const batchBody = await batchRes.json();
+    assert.equal(batchBody.ok, true);
+    assert.equal(batchBody.completedSteps, 3);
     logPass(
       "10-VISA-ACTIONS-ENGINE-CONFORMANCE",
-      `Verified OpenAPI 3.1 + /.well-known/visa-actions, 402 MPP/x402 challenge & settlement, Idempotency-Key replay/409, and read receipt ${receiptId}`,
+      `Verified OpenAPI 3.1 + TUF bundle (10 actionDigests), discover (<3000 chars), Principle 5 Permit refusal, 402 MPP/x402 settlement, Idempotency-Key replay/409, 3-step declared batch, and read receipt ${receiptId}`,
     );
   } finally {
     humanClient.close();

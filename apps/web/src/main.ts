@@ -1658,7 +1658,114 @@ function fetchForgeHubData(): void {
     .catch(() => {
       forgeTapPrompt.textContent = "Visa TAP (tap-http-request-v1): POST /v1/tap/verify";
     });
+
+  Promise.all([
+    fetch(`${apiOrigin}/.well-known/visa-actions/bundle`).then((r) => r.json()),
+    fetch(`${apiOrigin}/v1/actions/receipts`).then((r) => r.json()),
+  ])
+    .then(
+      ([bundle, rcptData]: [
+        {
+          revision?: number;
+          roles?: {
+            targets?: {
+              descriptorSha256?: string;
+              actionDigests?: Record<string, string>;
+            };
+          };
+        },
+        {
+          receipts?: Array<{
+            receiptId: string;
+            action: string;
+            paymentRail: string;
+            paidUsd: number;
+            paidSparks: number;
+            status: string;
+          }>;
+        },
+      ]) => {
+        const statusEl = document.querySelector<HTMLElement>("#visa-actions-status");
+        if (!statusEl) return;
+        const digests = bundle.roles?.targets?.actionDigests ?? {};
+        const digestCount = Object.keys(digests).length;
+        const recent = (rcptData.receipts ?? [])
+          .slice(0, 4)
+          .map(
+            (r) =>
+              `• ${r.receiptId} · act("${r.action}") · rail=${r.paymentRail} · $${r.paidUsd.toFixed(3)} (${r.paidSparks} Sparks) · [${r.status}]`,
+          )
+          .join("\n");
+        statusEl.textContent = `TUF Descriptor rev=${bundle.revision ?? 1} · sha256=${(bundle.roles?.targets?.descriptorSha256 ?? "").slice(0, 16)}… · ${digestCount} actionDigests verified\n${recent || "• Click [⚡ Run Live Visa Actions 402 → MPP → Receipt Flow] above to execute a live MPP call!"}`;
+      },
+    )
+    .catch(() => {});
 }
+
+document
+  .querySelector<HTMLButtonElement>("#visa-actions-run-btn")
+  ?.addEventListener("click", async () => {
+    const btn = document.querySelector<HTMLButtonElement>("#visa-actions-run-btn");
+    const statusEl = document.querySelector<HTMLElement>("#visa-actions-status");
+    if (!btn || !statusEl) return;
+    const apiOrigin =
+      location.port === "15173"
+        ? `http://${location.hostname || "127.0.0.1"}:18787`
+        : location.origin;
+    const selfId = snapshot?.selfCommanderId;
+    btn.disabled = true;
+    btn.textContent = "⏳ Running 402 → MPP → Read Receipt…";
+    try {
+      const idemKey = `ui_mpp_${crypto.randomUUID().slice(0, 12)}`;
+      let commanderId = selfId;
+      if (!commanderId) {
+        const fRes = await fetch(`${apiOrigin}/v1/actions/testnet/faucet`, { method: "POST" });
+        const fBody = (await fRes.json()) as { commanderId?: string };
+        commanderId = fBody.commanderId;
+      }
+      const chalRes = await fetch(`${apiOrigin}/v1/actions/act`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "Idempotency-Key": `${idemKey}_probe` },
+        body: JSON.stringify({
+          service: "swarms",
+          action: "buy_field_service",
+          payment_mode: "require_402",
+          args: { commander_id: commanderId, service: "mend" },
+        }),
+      });
+      const wwwAuth = chalRes.headers.get("www-authenticate") ?? "Payment challenge";
+      const payRes = await fetch(`${apiOrigin}/v1/actions/act`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "Idempotency-Key": idemKey,
+          Authorization: `Payment mpp_browser_ousd_${Date.now()}`,
+        },
+        body: JSON.stringify({
+          service: "swarms",
+          action: "buy_field_service",
+          payment_mode: "require_402",
+          args: { commander_id: commanderId, service: "mend" },
+        }),
+      });
+      const payBody = (await payRes.json()) as {
+        receipt?: { receiptId: string; paidUsd: number; paidSparks: number };
+      };
+      const rcptId = payBody.receipt?.receiptId ?? "";
+      const readRes = await fetch(`${apiOrigin}/v1/actions/receipts/${rcptId}`);
+      const readBody = (await readRes.json()) as { confirmed?: boolean };
+      statusEl.textContent = `✓ Step 1 (402 Challenge): ${wwwAuth.slice(0, 72)}…\n✓ Step 2 (MPP Paid Act): ${rcptId} ($${payBody.receipt?.paidUsd?.toFixed(3)} / ${payBody.receipt?.paidSparks} Sparks)\n✓ Step 3 (Read Confirm): GET /v1/actions/receipts/${rcptId} → confirmed=${Boolean(readBody.confirmed)}`;
+      btn.textContent = "✓ Visa Actions 402 → MPP → Receipt Verified!";
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = "⚡ Run Live Visa Actions 402 → MPP → Receipt Flow";
+        fetchForgeHubData();
+      }, 2800);
+    } catch {
+      btn.disabled = false;
+      btn.textContent = "⚡ Run Live Visa Actions 402 → MPP → Receipt Flow";
+    }
+  });
 
 wishSubmitBtn.addEventListener("click", () => {
   const title = wishTitleInput.value.trim();

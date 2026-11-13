@@ -263,7 +263,16 @@
                 <div id="wish-status" class="forge-desc"></div>
               </div>
               <div id="forge-proposals-list" class="forge-roster">Loading /v1/forge/proposals…</div>
-              <h3>6. The Ashen Sovereignty: World Zones &amp; Visa TAP (<code>tap-http-request-v1</code>)</h3>
+              <h3>6. 💳 Visa Actions Engine (<code>discover</code> &rarr; <code>read</code> / <code>act</code> · MPP / x402 / TUF Bundle)</h3>
+              <p class="forge-desc">Live conformance integration for <b>Visa-mono#12795</b>: OpenAPI 3.1 + <code>/.well-known/visa-actions/bundle</code> (TUF-signed SHA-256 <code>actionDigests</code>), HTTP 402 MPP/x402 challenges, <code>Idempotency-Key</code> replay protection, non-monetary EIP-712 <code>signingPolicy</code>, and read-after-write receipts:</p>
+              <div class="forge-actions">
+                <button id="visa-actions-run-btn" class="forge-btn" type="button">⚡ Run Live Visa Actions 402 &rarr; MPP &rarr; Receipt Flow</button>
+              </div>
+              <div class="forge-snippet">
+                <label>Live Visa Actions Conformance &amp; Receipt Inspector (<code>/v1/actions/receipts</code>)</label>
+                <code id="visa-actions-status">Loading /.well-known/visa-actions/bundle…</code>
+              </div>
+              <h3>7. The Ashen Sovereignty: World Zones &amp; Visa TAP (<code>tap-http-request-v1</code>)</h3>
               <div class="forge-snippet">
                 <label>World Topology &amp; TAP Sovereign Perks</label>
                 <code>• HIGH SANCTUARY (West Safe Haven): Zero PvP · +25 HP/s &amp; free unit regrow · Home to the Reliquary Anvil, Visa-TAP Obelisk [O] &amp; TaskMarket Board. Press [Y] for Town Portal!
