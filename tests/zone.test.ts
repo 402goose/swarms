@@ -860,4 +860,40 @@ describe("persistent zone runtime", () => {
     expect(claimed?.commanderId).toBe(wardenLeader.commanderId);
     expect(claimed?.resumeToken).toBe(wardenLeader.token);
   });
+
+  it("supports Reliquary itemization, 4-slot equipment stat bonuses, and Sanctuary Anvil Spark salvage", () => {
+    const runtime = new ZoneRuntime();
+    const session = runtime.join({
+      name: "RelicKeeper",
+      kind: "human",
+      character: "boneknight",
+      faction: "wardens",
+    });
+    const cmdr = runtime.world.commanders.get(session.commanderId)!;
+    // Starter Runic Relic is granted into Spoils Vault on join
+    expect(cmdr.vault).toContain("wardens_plate");
+    const baseHp = cmdr.maxHp;
+
+    // Equip starter Runic Armor (+35 Max HP, +5% Dmg)
+    const eq = runtime.equipItem(session, "wardens_plate");
+    expect(eq.slot).toBe("armor");
+    expect(cmdr.equipped?.armor).toBe("wardens_plate");
+    expect(cmdr.maxHp).toBe(baseHp + 35);
+
+    // Grant a Mythic Weapon Rune (+45% Dmg, +30 HP, +2 Swarm Cap) and auto-equip it
+    const grant = runtime.world.grantReliquaryItem(cmdr.id, "first_seal_edge", true);
+    expect(grant.equipped).toBe(true);
+    expect(cmdr.equipped?.weapon_rune).toBe("first_seal_edge");
+    const bonus = runtime.world.reliquaryBonusFor(cmdr);
+    expect(bonus.damageMul).toBeCloseTo(1.5, 2);
+    expect(bonus.bonusHp).toBe(35 + 30);
+    expect(bonus.bonusSwarmCap).toBe(2);
+
+    // Salvage the Mythic Weapon Rune at the Sanctuary Anvil for +85 Sparks
+    const sparksBefore = runtime.ledger.balance(session.accountId);
+    const salvage = runtime.salvageItem(session, "first_seal_edge");
+    expect(salvage.sparksGranted).toBe(85);
+    expect(runtime.ledger.balance(session.accountId)).toBe(sparksBefore + 85);
+    expect(cmdr.equipped?.weapon_rune).toBeUndefined();
+  });
 });

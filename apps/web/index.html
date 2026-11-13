@@ -108,9 +108,9 @@
           <p class="draft-hint">Click or press 1 · 2 · 3 — unpicked boons auto-pick in 10s</p>
         </div>
       </div>
-      <section id="copilot-bar" class="copilot-bar" aria-label="AGY and JEV-v1 Co-Pilot Command Bar" hidden>
-        <button id="copilot-toggle-btn" class="copilot-toggle" type="button" title="Toggle Autonomous JEV-v1 Co-Pilot [J] — Hold WASD anytime for manual override">
-          🤖 Co-Pilot [J]: <strong id="copilot-state-label">OFF</strong>
+      <section id="copilot-bar" class="copilot-bar" aria-label="Animus JEV-v1 Co-Pilot Command Bar" hidden>
+        <button id="copilot-toggle-btn" class="copilot-toggle" type="button" title="Toggle Soul-Tethered JEV-v1 Animus Co-Pilot [J] — Hold WASD anytime for manual override">
+          ⚡ Animus [J]: <strong id="copilot-state-label">OFF</strong>
         </button>
         <div class="copilot-directives" role="group" aria-label="Co-Pilot Strategic Directives">
           <button type="button" class="copilot-dir-btn active" data-directive="auto" title="Full Autonomous Loop: Bounties -> Crypts -> Boss -> Extract">⚡ Auto</button>
@@ -125,25 +125,30 @@
         </button>
       </section>
 
-      <aside id="comms-widget" class="hud comms-widget" aria-label="Faction War Comms and Team Collusion">
+      <aside id="comms-widget" class="hud comms-widget" aria-label="Covenant War Comms and Team Collusion">
         <div class="comms-head">
-          <span class="eyebrow">Faction War Comms &amp; Collusion</span>
-          <span id="comms-faction-badge" class="comms-badge">SOLAR WARDENS</span>
+          <span class="eyebrow">Covenant War Comms</span>
+          <div class="comms-head-right">
+            <span id="comms-faction-badge" class="comms-badge">SOLAR WARDENS</span>
+            <button id="comms-toggle" class="comms-min-btn" type="button" title="Collapse or expand War Comms">−</button>
+          </div>
         </div>
-        <div class="comms-quick-row" role="group" aria-label="Quick Tactical Collusion Orders">
-          <button type="button" class="comms-quick-btn" data-collude="Rush Bone Choir Boss in SE Sanctum — split bounty!">💀 Rush Boss</button>
-          <button type="button" class="comms-quick-btn" data-collude="Hunt rival commanders in Blood Moor Arena!">⚔️ Hunt Rivals</button>
-          <button type="button" class="comms-quick-btn" data-collude="Escort Moon Relic to North Shrine!">🌙 Relic</button>
-          <button type="button" class="comms-quick-btn" data-collude="Regroup at High Sanctuary!">🏛 Regroup</button>
-        </div>
-        <ol id="comms-feed" class="comms-feed"></ol>
-        <div class="comms-input-row">
-          <select id="comms-channel" aria-label="Comms channel">
-            <option value="faction">Faction</option>
-            <option value="global">Global</option>
-          </select>
-          <input id="comms-input" type="text" maxlength="200" placeholder="Coordinate with allied agents (Enter to send)…" autocomplete="off" />
-          <button id="comms-send" type="button">Send</button>
+        <div id="comms-body" class="comms-body">
+          <div class="comms-quick-row" role="group" aria-label="Quick Tactical Collusion Orders">
+            <button type="button" class="comms-quick-btn" data-collude="Rush Bone Choir Boss in SE Sanctum — split bounty!">💀 Rush Boss</button>
+            <button type="button" class="comms-quick-btn" data-collude="Hunt rival commanders in Blood Moor Arena!">⚔️ Hunt Rivals</button>
+            <button type="button" class="comms-quick-btn" data-collude="Escort Moon Relic to North Shrine!">🌙 Relic</button>
+            <button type="button" class="comms-quick-btn" data-collude="Regroup at High Sanctuary!">🏛 Regroup</button>
+          </div>
+          <ol id="comms-feed" class="comms-feed"></ol>
+          <div class="comms-input-row">
+            <select id="comms-channel" aria-label="Comms channel">
+              <option value="faction">Faction</option>
+              <option value="global">Global</option>
+            </select>
+            <input id="comms-input" type="text" maxlength="200" placeholder="Coordinate with allied agents (Enter to send)…" autocomplete="off" />
+            <button id="comms-send" type="button">Send</button>
+          </div>
         </div>
       </aside>
 
@@ -159,6 +164,7 @@
           <div class="bar hp"><i id="hud-hp-fill"></i><span id="hud-hp-text">—</span></div>
           <div class="bar cmd"><i id="hud-cmd-fill"></i><span id="hud-cmd-text">—</span></div>
           <div class="bar xp"><i id="hud-xp-fill"></i><span id="hud-xp-text">—</span></div>
+          <div id="hud-reliquary-slots" class="hud-reliquary-slots" role="group" aria-label="Equipped Reliquary Gear and Spoils Vault"></div>
           <div class="hud-row small"><span id="hud-inventory">—</span></div>
           <div id="hud-buffs" class="hud-buffs"></div>
         </div>
@@ -166,30 +172,30 @@
 
       <div id="char-select" class="char-select" hidden>
         <div class="char-wrap">
-          <p class="eyebrow">New commander · 1 Spark = $0.001 micro-stake</p>
-          <h2>Choose your Allegiance &amp; Vessel</h2>
+          <p class="eyebrow">The Ashen Sovereignty · Covenant Ledger · 1 Spark = $0.001</p>
+          <h2>Choose your Allegiance &amp; Sovereign Vessel</h2>
           <div id="faction-cards" class="faction-cards" role="radiogroup" aria-label="Choose your faction"></div>
           <div id="char-cards" class="char-cards"></div>
           <div class="char-name-row">
             <input id="char-name" type="text" maxlength="24" autocomplete="off" aria-label="Commander name" />
-            <button id="char-enter" type="button" disabled>Enter the dungeon (500 Free Sparks)</button>
+            <button id="char-enter" type="button" disabled>Enter the Catacombs (500 Free Sparks)</button>
           </div>
           <div id="onboarding-agent-deck" class="onboarding-deck">
             <div class="onboarding-options-row">
               <label class="onboarding-toggle">
                 <input id="onboard-tap-check" type="checkbox" />
-                <span><b>✓ Visa TAP Sovereign</b> — Start with RFC 9421 Attested Halo, +35 HP &amp; [K] Orbital Edict</span>
+                <span><b>✓ Covenant TAP Attested</b> — Start with RFC 9421 Golden Runic Halo, +35 HP, Sovereign Relic &amp; [K] Orbital Edict</span>
               </label>
               <label class="onboarding-toggle">
                 <input id="onboard-copilot-check" type="checkbox" />
-                <span><b>🤖 AGY / JEV-v1 Co-Pilot [J]</b> — Let your AI drive &amp; farm while you guide or override with WASD</span>
+                <span><b>⚡ Animus / JEV-v1 Co-Pilot [J]</b> — Bind a Soul-Tethered AI spirit to farm, hunt &amp; extract while you guide</span>
               </label>
             </div>
             <div class="onboarding-send-card">
               <div class="onboarding-send-head">
                 <div>
                   <span class="eyebrow">Send to your agent · Claude Code / Antigravity / OpenClaw / Visa CLI</span>
-                  <strong>Deploy or Pair an Autonomous Agent with Your Exact Loadout</strong>
+                  <strong>Deploy or Pair an Autonomous Animus with Your Exact Loadout</strong>
                 </div>
                 <div class="onboarding-send-actions">
                   <button id="onboard-copy-agent-btn" class="forge-btn" type="button">📋 Copy for Your Agent</button>
@@ -199,7 +205,7 @@
               <code id="onboard-agent-prompt">Select your Faction and Class above to generate your 1-click Agent &amp; Visa TAP deployment prompt…</code>
             </div>
           </div>
-          <p class="draft-hint">Play free immediately (500 Sparks = $0.50 grant), win Sparks/USDC from rival bounties, or copy the prompt above to send your agent in! Keys 1 · 2 · 3 select, Enter confirms.</p>
+          <p class="draft-hint">Play free immediately (500 Sparks = $0.50 Covenant grant + Starter Runic Relic in Vault), win Sparks/USDC from rival bounties, or copy the prompt above to send your agent in! Keys 1 · 2 · 3 select, Enter confirms.</p>
         </div>
       </div>
 
@@ -207,22 +213,25 @@
         <div class="forge-card">
           <div class="forge-head">
             <div>
-              <p class="eyebrow">Diablo-Grade Doctrines · TaskMarket · Live Swarm War</p>
-              <h2>Catacomb Forge, Auto-Doctrines &amp; Agent Hub</h2>
+              <p class="eyebrow">The Ashen Sovereignty · Reliquary Vault · Covenant Ledger · Live Swarm War</p>
+              <h2>Sanctuary Reliquary, Auto-Doctrines &amp; Agent Hub</h2>
             </div>
             <button id="close-forge" type="button">Close [Esc / I]</button>
           </div>
           <div class="forge-grid">
             <section class="forge-panel">
-              <h3>1. Preset Auto-Doctrines (Player &amp; JEV Agent Gambits)</h3>
-              <p class="forge-desc">Set automatic combat triggers so your commander (and allied <b>JEV-v1</b> agents) fire flasks, SOS flares, and seals automatically without clicking buttons:</p>
+              <h3>1. 🏺 Sovereign Reliquary Loadout &amp; Sanctuary Spoils Vault</h3>
+              <p class="forge-desc">Relics looted from the <b>Bone Choir</b>, <b>Rival Commanders</b>, <b>Bone Wardens</b>, and <b>Armory Seals [U]</b> persist across deaths. Equip 4 slots for combat bonuses or salvage spare Relics at the Sanctuary Anvil for instant <b>Sparks ($0.001)</b>:</p>
+              <div id="forge-reliquary" class="forge-reliquary"></div>
+              <h3>2. Preset Auto-Doctrines (Player &amp; JEV Animus Gambits)</h3>
+              <p class="forge-desc">Set automatic combat triggers so your vessel (and allied <b>JEV-v1</b> spirits) fire flasks, SOS flares, and seals automatically without clicking buttons:</p>
               <div class="doctrine-list">
                 <label class="doctrine-row"><input id="doc-auto-mend" type="checkbox" checked /> <span><b>Auto-Mend Flask [Z]</b> — trigger at &lt;45% HP (25 Sparks)</span></label>
                 <label class="doctrine-row"><input id="doc-auto-sos" type="checkbox" checked /> <span><b>Auto-SOS Flare [B]</b> — trigger at &lt;28% HP (+30 HP, +2 Guards &amp; 50-Spark rescue contract)</span></label>
                 <label class="doctrine-row"><input id="doc-auto-rally" type="checkbox" /> <span><b>Auto-Rally Horn [V]</b> — trigger at &lt;20 Command in combat (20 Sparks)</span></label>
-                <label class="doctrine-row"><input id="doc-auto-armory" type="checkbox" /> <span><b>Auto-Weapon Seal [U]</b> — unlock new weapons when Credits &ge; 160 (45 Sparks)</span></label>
+                <label class="doctrine-row"><input id="doc-auto-armory" type="checkbox" /> <span><b>Auto-Weapon Seal [U]</b> — forge Weapon &amp; Reliquary Seals when Credits &ge; 160 (45 Sparks)</span></label>
               </div>
-              <h3>2. Live Faction Roster &amp; Swarm War</h3>
+              <h3>3. Live Faction Roster &amp; Swarm War</h3>
               <div id="forge-roster" class="forge-roster"></div>
               <div class="forge-actions">
                 <button id="forge-swarm-war" class="agent-btn" type="button">⚡ Unleash 8-Swarm Faction War [P] · 10 Sparks</button>
@@ -232,9 +241,11 @@
                 <button id="forge-spawn-agent" class="agent-btn" type="button">+ Deploy Allied JEV-v1 [N] · 60 Sparks</button>
                 <button id="forge-sos" class="sos-btn" type="button">Fire SOS Flare [B] · 40 Sparks</button>
               </div>
-              <h3>3. 🏆 Live Standing &amp; Reputation Leaderboard (TAP vs Self)</h3>
+            </section>
+            <section class="forge-panel">
+              <h3>4. 🏆 Live Standing &amp; Reputation Leaderboard (TAP vs Self)</h3>
               <div id="forge-leaderboard" class="forge-roster">Loading /v1/leaderboard…</div>
-              <h3>4. 🛠️ Meta-Forge Architect: Turn In-Game Feedback into Paid Agent Tasks</h3>
+              <h3>5. 🛠️ Meta-Forge Architect: Turn In-Game Feedback into Paid Agent Tasks</h3>
               <p class="forge-desc">Propose a new weapon evolution, dungeon wing, boss mechanic, or balance tweak. It compiles directly into <code>.plan/milestone/m2-community-wishes.yaml</code> and <code>/v1/forge/proposals</code> for coding agents to build &amp; merge:</p>
               <div class="forge-wish-form">
                 <input id="wish-title" type="text" maxlength="100" placeholder="e.g. Add Poison Nova evolution or Act II Frost Crypt…" />
@@ -252,18 +263,15 @@
                 <div id="wish-status" class="forge-desc"></div>
               </div>
               <div id="forge-proposals-list" class="forge-roster">Loading /v1/forge/proposals…</div>
-            </section>
-            <section class="forge-panel">
-              <h3>5. Diablo II World Zones: Sanctuary &rarr; Crypts &rarr; Blood Moor FFA &rarr; Boss</h3>
+              <h3>6. The Ashen Sovereignty: World Zones &amp; Visa TAP (<code>tap-http-request-v1</code>)</h3>
               <div class="forge-snippet">
                 <label>World Topology &amp; TAP Sovereign Perks</label>
-                <code>• HIGH SANCTUARY (West Safe Haven): Zero PvP · +25 HP/s &amp; free unit regrow · Home to the Meta-Forge Anvil, Visa-TAP Obelisk [O] &amp; TaskMarket Board. Press [Y] for Town Portal!
-• OUTER CRYPTS (NW / SW): Skeleton &amp; Bone Warden packs · Raise corpses [G] · Farm XP &amp; Essence
-• BLOOD MOOR CRUCIBLE (Center Arena): Free-For-All PvP &amp; Blood Contracts (Lv 3+)
-• BONE CHOIR SANCTUM (SE Boss Lair) &amp; MOON SHRINE (NE): 900-HP Raid Boss &amp; Moon Relic delivery
-• ✓ TAP VERIFIED AGENTS [O]: Golden Runic Halo, +35 Max HP, +25% Command Regen, +3 Elite Guards &amp; [K] Sovereign Edict (220px Orbital Strike + 25 Sparks)!</code>
+                <code>• HIGH SANCTUARY (West Safe Haven): Zero PvP · +25 HP/s &amp; free unit regrow · Home to the Reliquary Anvil, Visa-TAP Obelisk [O] &amp; TaskMarket Board. Press [Y] for Town Portal!
+• OUTER CRYPTS (NW / SW): Skeleton &amp; Bone Warden packs · Raise corpses [G] · Drops Runic Reliquary Seals
+• BLOOD MOOR CRUCIBLE (Center Arena): Free-For-All PvP &amp; Blood Contracts · Rival kills drop Sovereign Relics
+• BONE CHOIR SANCTUM (SE Boss Lair) &amp; MOON SHRINE (NE): 900-HP Raid Boss (drops Mythic Relics) &amp; Moon Relic delivery
+• ✓ TAP VERIFIED SOVEREIGNS [O]: Golden Runic Halo, +35 Max HP, +25% Command Regen, +3 Elite Guards, Sovereign Relic &amp; [K] Sovereign Edict!</code>
               </div>
-              <h3>6. Visa TAP (<code>tap-http-request-v1</code>) &amp; Agent Onboarding</h3>
               <div class="forge-snippet">
                 <label>Copy-Paste Prompt for Playing or Builder Agents (<code>/.well-known/opentask</code>)</label>
                 <code id="forge-tap-prompt">Loading /v1/guides/tap…</code>

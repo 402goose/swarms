@@ -15,6 +15,9 @@ import {
   ECONOMY,
   FACTION_IDS,
   FACTIONS,
+  RELIQUARY_ITEMS,
+  type ReliquaryItemId,
+  type ReliquarySlot,
   UPGRADES,
   type UpgradeId,
   WEAPONS,
@@ -431,6 +434,15 @@ export class ZoneRuntime {
       const cmdr = this.world.commanders.get(commanderId);
       if (cmdr) cmdr.tier = "self";
     }
+    if (input.kind !== "bot") {
+      const starterRelic: ReliquaryItemId =
+        character === "boneknight"
+          ? "wardens_plate"
+          : character === "warlock"
+            ? "ashbrand_seal"
+            : "thrall_standard";
+      this.world.grantReliquaryItem(commanderId, starterRelic, false);
+    }
     this.recordSimEvents(events);
     this.pushFeed(this.world.tick, "joined", `${input.name} entered the dungeon`, commanderId);
     this.checkpoint();
@@ -803,6 +815,49 @@ export class ZoneRuntime {
     };
   }
 
+  equipItem(
+    session: SessionRecord,
+    itemId: ReliquaryItemId,
+  ): { slot: ReliquarySlot; itemId: ReliquaryItemId; label: string } {
+    const slot = this.world.equipReliquaryItem(session.commanderId, itemId);
+    const def = RELIQUARY_ITEMS[itemId];
+    const cmdr = this.world.commanders.get(session.commanderId);
+    this.pushFeed(
+      this.world.tick,
+      "reliquary_equip",
+      `${cmdr?.name ?? session.name} equipped [${def.rarity.toUpperCase()}] ${def.label} (+${def.damagePct}% Dmg, +${def.bonusHp} HP)`,
+      session.commanderId,
+    );
+    return { slot, itemId, label: def.label };
+  }
+
+  salvageItem(
+    session: SessionRecord,
+    itemId: ReliquaryItemId,
+  ): { itemId: ReliquaryItemId; sparksGranted: number; label: string } {
+    const sparksGranted = this.world.salvageReliquaryItem(session.commanderId, itemId);
+    const def = RELIQUARY_ITEMS[itemId];
+    const source =
+      this.ledger.balance(TREASURY_ACCOUNT) >= sparksGranted ? TREASURY_ACCOUNT : DUNGEON_ACCOUNT;
+    this.ledger.transfer({
+      from: source,
+      to: session.accountId,
+      amount: sparksGranted,
+      kind: "bounty_payout",
+      ref: `salvage:${itemId}`,
+      tick: this.world.tick,
+      idempotencyKey: `salvage:${session.accountId}:${itemId}:${this.world.tick}:${++this.eventSeq}`,
+    });
+    const cmdr = this.world.commanders.get(session.commanderId);
+    this.pushFeed(
+      this.world.tick,
+      "reliquary_salvage",
+      `${cmdr?.name ?? session.name} salvaged [${def.rarity.toUpperCase()}] ${def.label} at the Sanctuary Anvil for +${sparksGranted} Sparks`,
+      session.commanderId,
+    );
+    return { itemId, sparksGranted, label: def.label };
+  }
+
   postContract(session: SessionRecord, idempotencyKey: string, draft: ContractDraft): void {
     if (draft.zoneId && draft.zoneId !== this.zoneId) throw new Error("wrong_zone");
     if (draft.directedToCommanderId === session.commanderId) {
@@ -976,9 +1031,12 @@ export class ZoneRuntime {
       appliedDetail = `Bone Guards hired: +${spawned} elite thralls`;
     } else if (service === "armory") {
       const seal = this.world.grantWeaponSeal(commander.id);
+      const relicNote = seal.reliquaryItemId
+        ? ` + Reliquary [${RELIQUARY_ITEMS[seal.reliquaryItemId].label}]`
+        : "";
       appliedDetail = seal.weapon
-        ? `Weapon Seal: unlocked ${WEAPONS[seal.weapon].label}`
-        : "Weapon Seal: bonus upgrade draft ready";
+        ? `Weapon Seal: unlocked ${WEAPONS[seal.weapon].label}${relicNote}`
+        : `Weapon Seal: bonus upgrade draft ready${relicNote}`;
     } else if (service === "sos") {
       commander.hp = Math.min(commander.maxHp, commander.hp + ECONOMY.services.sos.heal);
       const spawned = this.world.spawnMercenaries(commander.id, ECONOMY.services.sos.count);
@@ -1456,6 +1514,31 @@ export class ZoneRuntime {
           }
           if (killerCmdr.faction === "reapers") this.reapersScore += baseSpoil;
           else this.wardensScore += baseSpoil;
+        }
+        if (
+          killerCmdr &&
+          killerCmdr.kind !== "bot" &&
+          (event.victimId === "boss-bone-choir" ||
+            event.victimKind === "commander" ||
+            event.victimTag === "bone-warden")
+        ) {
+          const dropPool: ReliquaryItemId[] =
+            event.victimId === "boss-bone-choir"
+              ? ["first_seal_edge", "undying_shroud", "bone_choir_eye", "ashen_host_banner"]
+              : event.victimKind === "commander"
+                ? ["choirbane_sigil", "ossuary_cuirass", "blood_moor_signet", "breach_herald"]
+                : ["ashbrand_seal", "wardens_plate", "ember_band", "thrall_standard"];
+          const dropIdx =
+            Math.abs((event.tick * 31 + (killerCmdr.kills ?? 0) * 17) | 0) % dropPool.length;
+          const droppedItem = dropPool[dropIdx]!;
+          const grant = this.world.grantReliquaryItem(killerCmdr.id, droppedItem, false);
+          const itemDef = RELIQUARY_ITEMS[grant.itemId];
+          this.pushFeed(
+            event.tick,
+            "reliquary_loot",
+            `${killerCmdr.name} claimed ${itemDef.rarity.toUpperCase()} Reliquary [${itemDef.label}] from ${victimName} → Spoils Vault`,
+            killerCmdr.id,
+          );
         }
         this.pushFeed(
           event.tick,

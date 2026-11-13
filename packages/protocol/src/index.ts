@@ -70,6 +70,28 @@ export type CopilotDirective = z.infer<typeof CopilotDirectiveSchema>;
 export const CommsChannelSchema = z.enum(["faction", "global", "forge"]);
 export type CommsChannel = z.infer<typeof CommsChannelSchema>;
 
+export const ReliquarySlotSchema = z.enum(["weapon_rune", "armor", "relic_ring", "war_banner"]);
+export type ReliquarySlot = z.infer<typeof ReliquarySlotSchema>;
+
+export const ReliquaryRaritySchema = z.enum(["runic", "sovereign", "mythic"]);
+export type ReliquaryRarity = z.infer<typeof ReliquaryRaritySchema>;
+
+export const ReliquaryItemIdSchema = z.enum([
+  "ashbrand_seal",
+  "choirbane_sigil",
+  "first_seal_edge",
+  "wardens_plate",
+  "ossuary_cuirass",
+  "undying_shroud",
+  "ember_band",
+  "blood_moor_signet",
+  "bone_choir_eye",
+  "thrall_standard",
+  "breach_herald",
+  "ashen_host_banner",
+]);
+export type ReliquaryItemId = z.infer<typeof ReliquaryItemIdSchema>;
+
 /** Micro-settlement rate: 1 Spark = $0.001 USD equivalent */
 export const SPARK_USD_RATE = 0.001;
 
@@ -257,6 +279,18 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
       reason: z.string().max(140).optional(),
     })
     .strict(),
+  z
+    .object({
+      type: z.literal("equipItem"),
+      itemId: ReliquaryItemIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal("salvageItem"),
+      itemId: ReliquaryItemIdSchema,
+    })
+    .strict(),
 ]);
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
@@ -331,6 +365,8 @@ export interface CommanderSnapshot {
   vouches?: number;
   lastCommsText?: string;
   lastCommsTick?: number;
+  equipped?: Partial<Record<ReliquarySlot, ReliquaryItemId>>;
+  vault?: ReliquaryItemId[];
 }
 
 export interface PickupSnapshot {
@@ -340,6 +376,7 @@ export interface PickupSnapshot {
   x: number;
   y: number;
   radius: number;
+  reliquaryItemId?: ReliquaryItemId;
 }
 
 export type ContractStatus =

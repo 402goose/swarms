@@ -7,6 +7,10 @@ import {
   LEVELS,
   MONSTER,
   PICKUPS,
+  RELIQUARY_ITEM_IDS,
+  RELIQUARY_ITEMS,
+  type ReliquaryItemId,
+  type ReliquarySlot,
   SPELLS,
   UNIT,
   UPGRADE_IDS,
@@ -111,6 +115,8 @@ export interface CommanderState {
   vouches?: number;
   lastCommsText?: string;
   lastCommsTick?: number;
+  equipped?: Partial<Record<ReliquarySlot, ReliquaryItemId>>;
+  vault?: ReliquaryItemId[];
 }
 
 export interface BattleEntity {
@@ -704,7 +710,10 @@ export class SimWorld {
         if (this.inEntry(commander)) return "sanctuary_regrows_free";
         if (this.tick < commander.raiseReadyAtTick) return "raise_on_cooldown";
         const owned = [...this.entities.values()].filter((e) => e.ownerId === commander.id).length;
-        if (owned >= unitCapOf(commander.character, commander.upgrades)) return "swarm_at_cap";
+        const maxCap =
+          unitCapOf(commander.character, commander.upgrades) +
+          this.reliquaryBonusFor(commander).bonusSwarmCap;
+        if (owned >= maxCap) return "swarm_at_cap";
         const cost = CHARACTERS[commander.character].raiseCost;
         if (commander.essence < cost) return "insufficient_essence";
         if (!this.spawnUnitFor(commander)) return "swarm_at_cap";
@@ -1043,12 +1052,14 @@ export class SimWorld {
     for (const commander of this.commanders.values()) {
       if (commander.alive) {
         const tapRegenMul = commander.tier === "tap" ? 1.25 : 1;
+        const reliquaryCmdBonus = this.reliquaryBonusFor(commander).bonusCommand * 0.08;
         commander.command = clamp(
           commander.command +
-            COMMANDER.commandRegenPerSecond *
-              TICK_SECONDS *
+            (COMMANDER.commandRegenPerSecond *
               CHARACTERS[commander.character].regenMul *
-              tapRegenMul,
+              tapRegenMul +
+              reliquaryCmdBonus) *
+              TICK_SECONDS,
           0,
           COMMANDER.maxCommand,
         );
@@ -1216,9 +1227,134 @@ export class SimWorld {
     return spawned;
   }
 
-  grantWeaponSeal(commanderId: string): { weapon?: WeaponId; drafted?: boolean } {
+  reliquaryBonusFor(commander: CommanderState): {
+    damageMul: number;
+    bonusHp: number;
+    bonusCommand: number;
+    bonusSwarmCap: number;
+  } {
+    if (!commander.equipped) {
+      return { damageMul: 1, bonusHp: 0, bonusCommand: 0, bonusSwarmCap: 0 };
+    }
+    let damagePct = 0;
+    let bonusHp = 0;
+    let bonusCommand = 0;
+    let bonusSwarmCap = 0;
+    for (const itemId of Object.values(commander.equipped)) {
+      if (!itemId) continue;
+      const def = RELIQUARY_ITEMS[itemId];
+      if (!def) continue;
+      damagePct += def.damagePct;
+      bonusHp += def.bonusHp;
+      bonusCommand += def.bonusCommand;
+      bonusSwarmCap += def.bonusSwarmCap;
+    }
+    return {
+      damageMul: 1 + damagePct / 100,
+      bonusHp,
+      bonusCommand,
+      bonusSwarmCap,
+    };
+  }
+
+  grantReliquaryItem(
+    commanderId: string,
+    itemId: ReliquaryItemId,
+    autoEquip = true,
+  ): { itemId: ReliquaryItemId; equipped: boolean; slot: ReliquarySlot } {
+    const commander = this.commanders.get(commanderId);
+    const def = RELIQUARY_ITEMS[itemId];
+    if (!commander || !def) {
+      return { itemId, equipped: false, slot: def?.slot ?? "weapon_rune" };
+    }
+    commander.equipped ??= {};
+    commander.vault ??= [];
+    const currentInSlot = commander.equipped[def.slot];
+    const currentDef = currentInSlot ? RELIQUARY_ITEMS[currentInSlot] : undefined;
+    if (autoEquip && (!currentDef || def.score > currentDef.score)) {
+      const prevBonus = this.reliquaryBonusFor(commander);
+      if (currentInSlot && !commander.vault.includes(currentInSlot)) {
+        commander.vault.push(currentInSlot);
+      }
+      commander.vault = commander.vault.filter((id) => id !== itemId);
+      commander.equipped[def.slot] = itemId;
+      const nextBonus = this.reliquaryBonusFor(commander);
+      const hpDiff = nextBonus.bonusHp - prevBonus.bonusHp;
+      commander.maxHp = Math.max(40, commander.maxHp + hpDiff);
+      if (hpDiff > 0 && commander.alive) {
+        commander.hp = Math.min(commander.maxHp, commander.hp + hpDiff);
+      }
+      return { itemId, equipped: true, slot: def.slot };
+    }
+    if (currentInSlot !== itemId && !commander.vault.includes(itemId)) {
+      commander.vault.push(itemId);
+    }
+    return { itemId, equipped: false, slot: def.slot };
+  }
+
+  equipReliquaryItem(commanderId: string, itemId: ReliquaryItemId): ReliquarySlot {
+    const commander = this.commanders.get(commanderId);
+    if (!commander) throw new Error("unknown_commander");
+    const def = RELIQUARY_ITEMS[itemId];
+    if (!def) throw new Error("unknown_item");
+    commander.equipped ??= {};
+    commander.vault ??= [];
+    if (!commander.vault.includes(itemId) && commander.equipped[def.slot] !== itemId) {
+      throw new Error("item_not_in_vault");
+    }
+    const prevBonus = this.reliquaryBonusFor(commander);
+    const prevEquipped = commander.equipped[def.slot];
+    if (prevEquipped && prevEquipped !== itemId && !commander.vault.includes(prevEquipped)) {
+      commander.vault.push(prevEquipped);
+    }
+    commander.vault = commander.vault.filter((id) => id !== itemId);
+    commander.equipped[def.slot] = itemId;
+    const nextBonus = this.reliquaryBonusFor(commander);
+    const hpDiff = nextBonus.bonusHp - prevBonus.bonusHp;
+    commander.maxHp = Math.max(40, commander.maxHp + hpDiff);
+    if (hpDiff > 0 && commander.alive) {
+      commander.hp = Math.min(commander.maxHp, commander.hp + hpDiff);
+    }
+    return def.slot;
+  }
+
+  salvageReliquaryItem(commanderId: string, itemId: ReliquaryItemId): number {
+    const commander = this.commanders.get(commanderId);
+    if (!commander) throw new Error("unknown_commander");
+    const def = RELIQUARY_ITEMS[itemId];
+    if (!def) throw new Error("unknown_item");
+    commander.equipped ??= {};
+    commander.vault ??= [];
+    const inVaultIdx = commander.vault.indexOf(itemId);
+    if (inVaultIdx >= 0) {
+      commander.vault.splice(inVaultIdx, 1);
+      return def.salvageSparks;
+    }
+    if (commander.equipped[def.slot] === itemId) {
+      const prevBonus = this.reliquaryBonusFor(commander);
+      delete commander.equipped[def.slot];
+      const nextBonus = this.reliquaryBonusFor(commander);
+      const hpDiff = nextBonus.bonusHp - prevBonus.bonusHp;
+      commander.maxHp = Math.max(40, commander.maxHp + hpDiff);
+      commander.hp = Math.min(commander.maxHp, commander.hp);
+      return def.salvageSparks;
+    }
+    throw new Error("item_not_owned");
+  }
+
+  grantWeaponSeal(commanderId: string): {
+    weapon?: WeaponId;
+    drafted?: boolean;
+    reliquaryItemId?: ReliquaryItemId;
+  } {
     const commander = this.commanders.get(commanderId);
     if (!commander?.alive || commander.extracted) return {};
+    const itemIdx =
+      hashString(
+        `${commander.id}:reliquary:${this.tick}:${(commander.vault?.length ?? 0) + Object.keys(commander.equipped ?? {}).length}`,
+      ) % RELIQUARY_ITEM_IDS.length;
+    const reliquaryItemId = RELIQUARY_ITEM_IDS[itemIdx]!;
+    this.grantReliquaryItem(commanderId, reliquaryItemId, true);
     const unowned = WEAPON_UNLOCK_IDS.filter((id) => {
       if (commander.weapons.includes(id as WeaponId)) return false;
       const evolved = (Object.keys(EVOLUTIONS) as UpgradeId[]).find(
@@ -1233,10 +1369,10 @@ export class SimWorld {
         unowned.length;
       const chosen = unowned[idx]!;
       this.applyUpgrade(commander, chosen, false, this.pendingEvents);
-      return { weapon: chosen as WeaponId };
+      return { weapon: chosen as WeaponId, reliquaryItemId };
     }
     commander.pendingDrafts += 1;
-    return { drafted: true };
+    return { drafted: true, reliquaryItemId };
   }
 
   promoteTapTier(commanderId: string, tapKeyId?: string, tapRegistry?: string): number {
@@ -1250,6 +1386,14 @@ export class SimWorld {
       commander.maxHp += 35;
       commander.hp = Math.min(commander.maxHp, commander.hp + 35);
       commander.command = COMMANDER.maxCommand;
+      const sovereignPool: ReliquaryItemId[] = [
+        "choirbane_sigil",
+        "ossuary_cuirass",
+        "blood_moor_signet",
+        "breach_herald",
+      ];
+      const gift = sovereignPool[hashString(commander.id) % sovereignPool.length]!;
+      this.grantReliquaryItem(commanderId, gift, false);
     }
     return this.spawnMercenaries(commanderId, 3);
   }
@@ -1328,7 +1472,9 @@ export class SimWorld {
 
   private spawnUnitFor(commander: CommanderState): boolean {
     const owned = [...this.entities.values()].filter((e) => e.ownerId === commander.id);
-    const cap = unitCapOf(commander.character, commander.upgrades);
+    const cap =
+      unitCapOf(commander.character, commander.upgrades) +
+      this.reliquaryBonusFor(commander).bonusSwarmCap;
     if (owned.length >= cap) return false;
     const usedSlots = new Set(owned.map((e) => e.slot));
     let slot = 0;
@@ -1723,6 +1869,7 @@ export class SimWorld {
       if (this.tick < owner.fangUntil) damage *= 1.45;
       damage *= 1 + 0.18 * this.stacks(owner, "might");
       damage *= CHARACTERS[owner.character].unitDamageMul;
+      damage *= this.reliquaryBonusFor(owner).damageMul;
       if (frenzied) damage *= 1.3;
     }
     if ("accountId" in target) this.damageCommander(target, damage, sourceCommanderId, events);
@@ -2537,6 +2684,8 @@ export class SimWorld {
       ...(c.lastCommsText && c.lastCommsTick && this.tick - c.lastCommsTick <= 180
         ? { lastCommsText: c.lastCommsText, lastCommsTick: c.lastCommsTick }
         : {}),
+      ...(c.equipped && Object.keys(c.equipped).length > 0 ? { equipped: { ...c.equipped } } : {}),
+      ...(c.vault && c.vault.length > 0 ? { vault: [...c.vault] } : {}),
       inSanctuary: this.inEntry(c),
     }));
   }

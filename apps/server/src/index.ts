@@ -1,6 +1,12 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { extname, resolve } from "node:path";
+import {
+  RELIQUARY_ITEMS,
+  RELIQUARY_RARITIES,
+  RELIQUARY_SLOTS,
+  type ReliquaryItemId,
+} from "@swarms/content";
 import { FileZoneStore } from "@swarms/persistence";
 import type { CommsChannel, ContractStatus, FactionId, ServerMessage } from "@swarms/protocol";
 import { parseClientMessage, SCHEMA_VERSION, SPARK_USD_RATE } from "@swarms/protocol";
@@ -414,6 +420,97 @@ const httpServer = createServer((request, response) => {
     });
     return;
   }
+  if (url.pathname === "/v1/reliquary" && request.method === "GET") {
+    return json(
+      response,
+      200,
+      {
+        slots: RELIQUARY_SLOTS,
+        rarities: RELIQUARY_RARITIES,
+        items: RELIQUARY_ITEMS,
+      },
+      origin,
+      reqHost,
+    );
+  }
+  if (url.pathname === "/v1/reliquary/equip" && request.method === "POST") {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += String(chunk);
+    });
+    request.on("end", () => {
+      try {
+        const parsed = JSON.parse(body || "{}") as {
+          resumeToken?: string;
+          commanderId?: string;
+          itemId?: ReliquaryItemId;
+        };
+        const session = runtime.sessionFor({
+          ...(parsed.resumeToken ? { resumeToken: parsed.resumeToken } : {}),
+          ...(parsed.commanderId ? { commanderId: parsed.commanderId } : {}),
+        });
+        if (!session || !parsed.itemId) {
+          return json(
+            response,
+            400,
+            { ok: false, error: "valid_session_and_item_required" },
+            origin,
+            reqHost,
+          );
+        }
+        const equipped = runtime.equipItem(session, parsed.itemId);
+        return json(response, 200, { ok: true, ...equipped }, origin, reqHost);
+      } catch (err) {
+        return json(
+          response,
+          400,
+          { ok: false, error: err instanceof Error ? err.message : "equip_failed" },
+          origin,
+          reqHost,
+        );
+      }
+    });
+    return;
+  }
+  if (url.pathname === "/v1/reliquary/salvage" && request.method === "POST") {
+    let body = "";
+    request.on("data", (chunk) => {
+      body += String(chunk);
+    });
+    request.on("end", () => {
+      try {
+        const parsed = JSON.parse(body || "{}") as {
+          resumeToken?: string;
+          commanderId?: string;
+          itemId?: ReliquaryItemId;
+        };
+        const session = runtime.sessionFor({
+          ...(parsed.resumeToken ? { resumeToken: parsed.resumeToken } : {}),
+          ...(parsed.commanderId ? { commanderId: parsed.commanderId } : {}),
+        });
+        if (!session || !parsed.itemId) {
+          return json(
+            response,
+            400,
+            { ok: false, error: "valid_session_and_item_required" },
+            origin,
+            reqHost,
+          );
+        }
+        const salvaged = runtime.salvageItem(session, parsed.itemId);
+        return json(response, 200, { ok: true, ...salvaged }, origin, reqHost);
+      } catch (err) {
+        return json(
+          response,
+          400,
+          { ok: false, error: err instanceof Error ? err.message : "salvage_failed" },
+          origin,
+          reqHost,
+        );
+      }
+    });
+    return;
+  }
   if (url.pathname === "/health") return json(response, 200, runtime.health(), origin, reqHost);
   if (
     (url.pathname === "/v1/contracts" || url.pathname === "/v1/ledger") &&
@@ -634,6 +731,14 @@ wss.on("connection", (ws, request) => {
         for (const [clientWs, clientState] of clients) {
           sendSnapshot(clientWs, clientState);
         }
+      } else if (message.type === "equipItem") {
+        runtime.equipItem(session, message.itemId);
+        send(ws, { type: "ack", ok: true });
+        sendSnapshot(ws, state);
+      } else if (message.type === "salvageItem") {
+        runtime.salvageItem(session, message.itemId);
+        send(ws, { type: "ack", ok: true });
+        sendSnapshot(ws, state);
       } else if (message.type === "requestWorld") {
         if (!state.worldRequests.tryTake()) throw new Error("world_request_budget_exceeded");
         state.worldSent = false;

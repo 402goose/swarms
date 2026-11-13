@@ -7,6 +7,9 @@ import type {
   CopilotDirective,
   FactionId,
   GameCommand,
+  ReliquaryItemId,
+  ReliquaryRarity,
+  ReliquarySlot,
   ServerMessage,
   UpgradeId,
   Vec2,
@@ -102,6 +105,7 @@ const fields = {
   hudCmdFill: $("#hud-cmd-fill"),
   hudCmdText: $("#hud-cmd-text"),
   hudXpFill: $("#hud-xp-fill"),
+  hudReliquarySlots: $("#hud-reliquary-slots"),
   hudInventory: $("#hud-inventory"),
   hudBuffs: $("#hud-buffs"),
   playerHud: $("#player-hud"),
@@ -119,6 +123,7 @@ const fields = {
   copilotPairBtn: $<HTMLButtonElement>("#copilot-pair-btn"),
   commsWidget: $("#comms-widget"),
   commsFactionBadge: $("#comms-faction-badge"),
+  commsToggle: $<HTMLButtonElement>("#comms-toggle"),
   commsFeed: $("#comms-feed"),
   commsChannel: $<HTMLSelectElement>("#comms-channel"),
   commsInput: $<HTMLInputElement>("#comms-input"),
@@ -869,6 +874,7 @@ function updatePlayerHud(
     fields.hudPortrait.src = portrait;
   }
   fields.raiseLabel.textContent = card ? `Raise · ${card.raiseCost} essence` : "Raise swarmling";
+  renderHudReliquarySlots(self);
   const inv: string[] = [];
   if (self) inv.push(`Essence ${self.essence}`);
   if (self?.carryingItemId) inv.push("Carrying the relic");
@@ -890,6 +896,225 @@ function updatePlayerHud(
       }),
     );
   }
+}
+
+const RELIQUARY_SLOTS_UI: Array<{ id: ReliquarySlot; shortLabel: string; label: string }> = [
+  { id: "weapon_rune", shortLabel: "Rune", label: "Weapon Rune" },
+  { id: "armor", shortLabel: "Vestment", label: "Sovereign Vestment" },
+  { id: "relic_ring", shortLabel: "Signet", label: "Covenant Signet" },
+  { id: "war_banner", shortLabel: "Standard", label: "Swarm Standard" },
+];
+
+const RELIQUARY_TEXT: Record<
+  ReliquaryItemId,
+  {
+    label: string;
+    slot: ReliquarySlot;
+    rarity: ReliquaryRarity;
+    lore: string;
+    damagePct: number;
+    bonusHp: number;
+    bonusCommand: number;
+    bonusSwarmCap: number;
+    salvageSparks: number;
+  }
+> = {
+  ashbrand_seal: {
+    label: "Ashbrand Seal",
+    slot: "weapon_rune",
+    rarity: "runic",
+    lore: "Etched in High Sanctuary ash; channels searing covenant fire through your wand.",
+    damagePct: 14,
+    bonusHp: 0,
+    bonusCommand: 5,
+    bonusSwarmCap: 0,
+    salvageSparks: 25,
+  },
+  choirbane_sigil: {
+    label: "Choirbane Sigil",
+    slot: "weapon_rune",
+    rarity: "sovereign",
+    lore: "Wrested from the SE Sanctum; hums at the resonant frequency that shatters Bone Choir ribcages.",
+    damagePct: 28,
+    bonusHp: 15,
+    bonusCommand: 15,
+    bonusSwarmCap: 1,
+    salvageSparks: 50,
+  },
+  first_seal_edge: {
+    label: "Edge of the First Seal",
+    slot: "weapon_rune",
+    rarity: "mythic",
+    lore: "A mythic covenant shard forged before the Breach; every strike sears both flesh and Animus.",
+    damagePct: 45,
+    bonusHp: 30,
+    bonusCommand: 20,
+    bonusSwarmCap: 2,
+    salvageSparks: 85,
+  },
+  wardens_plate: {
+    label: "Warden's Covenant Plate",
+    slot: "armor",
+    rarity: "runic",
+    lore: "Sanctuary-blessed lamellar worn by Solar Wardens patrolling the Outer Crypts.",
+    damagePct: 5,
+    bonusHp: 35,
+    bonusCommand: 0,
+    bonusSwarmCap: 0,
+    salvageSparks: 25,
+  },
+  ossuary_cuirass: {
+    label: "Ossuary Cuirass",
+    slot: "armor",
+    rarity: "sovereign",
+    lore: "Fused from a dozen fallen Bone Wardens; absorbs lethal volleys in the Blood Moor Crucible.",
+    damagePct: 10,
+    bonusHp: 60,
+    bonusCommand: 15,
+    bonusSwarmCap: 1,
+    salvageSparks: 50,
+  },
+  undying_shroud: {
+    label: "Shroud of the Undying Sovereign",
+    slot: "armor",
+    rarity: "mythic",
+    lore: "Woven from the burial vestments of the First Necromancer; death itself hesitates to claim its bearer.",
+    damagePct: 20,
+    bonusHp: 95,
+    bonusCommand: 25,
+    bonusSwarmCap: 2,
+    salvageSparks: 85,
+  },
+  ember_band: {
+    label: "Ember Covenant Ring",
+    slot: "relic_ring",
+    rarity: "runic",
+    lore: "Warm iron signet that steadies an Animus during long sorties beyond the Sanctuary.",
+    damagePct: 8,
+    bonusHp: 10,
+    bonusCommand: 15,
+    bonusSwarmCap: 0,
+    salvageSparks: 25,
+  },
+  blood_moor_signet: {
+    label: "Blood Moor Signet",
+    slot: "relic_ring",
+    rarity: "sovereign",
+    lore: "Taken from a rival warlord in the central arena; pulses with stolen Essence and war spoils.",
+    damagePct: 18,
+    bonusHp: 20,
+    bonusCommand: 25,
+    bonusSwarmCap: 1,
+    salvageSparks: 50,
+  },
+  bone_choir_eye: {
+    label: "Eye of the Bone Choir",
+    slot: "relic_ring",
+    rarity: "mythic",
+    lore: "The crystallized chorus-core of the SE Sanctum raid boss; grants overwhelming Command authority.",
+    damagePct: 32,
+    bonusHp: 35,
+    bonusCommand: 40,
+    bonusSwarmCap: 2,
+    salvageSparks: 85,
+  },
+  thrall_standard: {
+    label: "Thrall Bone Standard",
+    slot: "war_banner",
+    rarity: "runic",
+    lore: "Runic spine-pole that binds two extra swarmlings to your Commander's call.",
+    damagePct: 5,
+    bonusHp: 15,
+    bonusCommand: 5,
+    bonusSwarmCap: 2,
+    salvageSparks: 25,
+  },
+  breach_herald: {
+    label: "Herald of the Breach",
+    slot: "war_banner",
+    rarity: "sovereign",
+    lore: "Obsidian Reaper war-pennant that drives your undead host into a relentless frenzy.",
+    damagePct: 16,
+    bonusHp: 25,
+    bonusCommand: 10,
+    bonusSwarmCap: 4,
+    salvageSparks: 50,
+  },
+  ashen_host_banner: {
+    label: "Banner of the Ashen Host",
+    slot: "war_banner",
+    rarity: "mythic",
+    lore: "Mythic standard of the Catacomb Lords; expands your legion by +6 thralls and empowers every strike.",
+    damagePct: 28,
+    bonusHp: 50,
+    bonusCommand: 20,
+    bonusSwarmCap: 6,
+    salvageSparks: 85,
+  },
+};
+
+function formatRelicStats(def: (typeof RELIQUARY_TEXT)[ReliquaryItemId]): string {
+  const parts: string[] = [];
+  if (def.damagePct > 0) parts.push(`+${def.damagePct}% Dmg`);
+  if (def.bonusHp > 0) parts.push(`+${def.bonusHp} HP`);
+  if (def.bonusCommand > 0) parts.push(`+${def.bonusCommand} Cmd`);
+  if (def.bonusSwarmCap > 0) parts.push(`+${def.bonusSwarmCap} Swarm`);
+  return parts.join(" · ");
+}
+
+let lastHudRelicSig = "";
+function renderHudReliquarySlots(self: ZoneSnapshot["commanders"][number] | undefined): void {
+  if (!self) {
+    fields.hudReliquarySlots.replaceChildren();
+    lastHudRelicSig = "";
+    return;
+  }
+  const equipped = self.equipped ?? {};
+  const vault = self.vault ?? [];
+  const sig = `${JSON.stringify(equipped)}|${vault.join(",")}`;
+  if (sig === lastHudRelicSig) return;
+  lastHudRelicSig = sig;
+
+  const nodes: HTMLElement[] = [];
+  for (const slot of RELIQUARY_SLOTS_UI) {
+    const equippedId = equipped[slot.id];
+    const def = equippedId ? RELIQUARY_TEXT[equippedId] : undefined;
+    const vaultCandidate = !def
+      ? vault.find((id) => RELIQUARY_TEXT[id]?.slot === slot.id)
+      : undefined;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    if (def) {
+      btn.className = `hud-relic-badge rarity-${def.rarity}`;
+      btn.textContent = `${slot.shortLabel}: ${def.label}`;
+      btn.title = `[${def.rarity.toUpperCase()}] ${def.label} (${formatRelicStats(def)}) — ${def.lore} (Click to open Reliquary Vault [I])`;
+      btn.addEventListener("click", () => $<HTMLButtonElement>("#open-forge").click());
+    } else if (vaultCandidate) {
+      const vDef = RELIQUARY_TEXT[vaultCandidate];
+      btn.className = `hud-relic-badge rarity-${vDef.rarity}`;
+      btn.textContent = `+ Equip ${vDef.label}`;
+      btn.title = `Click to equip [${vDef.rarity.toUpperCase()}] ${vDef.label} (${formatRelicStats(vDef)}) from your Spoils Vault`;
+      btn.addEventListener("click", () => {
+        sfx.playUpgradeChosen(true);
+        send({ type: "equipItem", itemId: vaultCandidate });
+      });
+    } else {
+      btn.className = "hud-relic-badge";
+      btn.textContent = `${slot.shortLabel}: Empty`;
+      btn.title = `${slot.label} slot empty — slay Wardens/Bosses or press [U] Armory to forge Relics`;
+      btn.addEventListener("click", () => $<HTMLButtonElement>("#open-forge").click());
+    }
+    nodes.push(btn);
+  }
+  const vaultBtn = document.createElement("button");
+  vaultBtn.type = "button";
+  vaultBtn.className = "hud-relic-vault-pill";
+  vaultBtn.textContent = `🏺 Vault (${vault.length}) [I]`;
+  vaultBtn.title =
+    "Open Sanctuary Reliquary & Spoils Vault [I] to equip or salvage Relics for Sparks";
+  vaultBtn.addEventListener("click", () => $<HTMLButtonElement>("#open-forge").click());
+  nodes.push(vaultBtn);
+  fields.hudReliquarySlots.replaceChildren(...nodes);
 }
 
 const WEAPON_TEXT: Record<WeaponId, { label: string; hint: string }> = {
@@ -1120,6 +1345,7 @@ for (const [selector, service] of [
 }
 
 const forgeModal = $("#forge-modal");
+const forgeReliquary = $("#forge-reliquary");
 const forgeRoster = $("#forge-roster");
 const forgeLeaderboard = $("#forge-leaderboard");
 const forgeProposalsList = $("#forge-proposals-list");
@@ -1188,9 +1414,107 @@ function evaluateAutoDoctrines(): void {
   }
 }
 
+function renderForgeReliquary(self: ZoneSnapshot["commanders"][number] | undefined): void {
+  const equipped = self?.equipped ?? {};
+  const vault = self?.vault ?? [];
+  let totalDmgPct = 0;
+  let totalHp = 0;
+  let totalCmd = 0;
+  let totalSwarm = 0;
+  for (const itemId of Object.values(equipped)) {
+    if (!itemId) continue;
+    const def = RELIQUARY_TEXT[itemId];
+    if (!def) continue;
+    totalDmgPct += def.damagePct;
+    totalHp += def.bonusHp;
+    totalCmd += def.bonusCommand;
+    totalSwarm += def.bonusSwarmCap;
+  }
+
+  const bonusBar = document.createElement("div");
+  bonusBar.className = "relic-bonus-bar";
+  bonusBar.textContent = `Active Reliquary Bonuses: +${totalDmgPct}% Weapon/Spell Dmg · +${totalHp} Max HP · +${totalCmd} Command · +${totalSwarm} Swarm Cap`;
+
+  const loadoutGrid = document.createElement("div");
+  loadoutGrid.className = "relic-loadout-grid";
+  for (const slot of RELIQUARY_SLOTS_UI) {
+    const equippedId = equipped[slot.id];
+    const def = equippedId ? RELIQUARY_TEXT[equippedId] : undefined;
+    const card = document.createElement("div");
+    card.className = `relic-slot-card${def ? ` rarity-${def.rarity}` : ""}`;
+    const head = document.createElement("div");
+    head.className = "relic-slot-head";
+    const slotSpan = document.createElement("span");
+    slotSpan.textContent = slot.label;
+    const raritySpan = document.createElement("span");
+    raritySpan.textContent = def ? def.rarity.toUpperCase() : "EMPTY";
+    head.append(slotSpan, raritySpan);
+    const title = document.createElement("strong");
+    title.textContent = def ? def.label : "No Relic Bound";
+    const stats = document.createElement("small");
+    stats.textContent = def
+      ? `${formatRelicStats(def)} — ${def.lore}`
+      : "Slay Bone Wardens, Rival Commanders, or the Bone Choir Boss — or forge a Seal [U].";
+    card.append(head, title, stats);
+    if (def && equippedId) {
+      const salvageBtn = document.createElement("button");
+      salvageBtn.type = "button";
+      salvageBtn.textContent = `Salvage (+${def.salvageSparks} Sparks)`;
+      salvageBtn.addEventListener("click", () => {
+        send({ type: "salvageItem", itemId: equippedId });
+      });
+      card.appendChild(salvageBtn);
+    }
+    loadoutGrid.appendChild(card);
+  }
+
+  const vaultList = document.createElement("div");
+  vaultList.className = "relic-vault-list";
+  if (vault.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "forge-desc";
+    empty.textContent =
+      "Sanctuary Spoils Vault is empty. Press [U] Armory (45 Sparks) or slay Crypt Wardens/Bosses to claim Relics.";
+    vaultList.appendChild(empty);
+  } else {
+    for (const itemId of vault) {
+      const def = RELIQUARY_TEXT[itemId];
+      if (!def) continue;
+      const row = document.createElement("div");
+      row.className = "relic-vault-row";
+      const info = document.createElement("div");
+      info.innerHTML = `<b style="color:${def.rarity === "mythic" ? "#ff8a7a" : def.rarity === "sovereign" ? "#f5c84c" : "#7fd8ff"}">[${def.rarity.toUpperCase()}] ${def.label}</b> <small>(${def.slot.replace("_", " ")} · ${formatRelicStats(def)})</small>`;
+      const actions = document.createElement("div");
+      actions.className = "relic-vault-actions";
+      const equipBtn = document.createElement("button");
+      equipBtn.type = "button";
+      equipBtn.className = "forge-btn";
+      equipBtn.dataset.equipItem = itemId;
+      equipBtn.textContent = "Equip";
+      equipBtn.addEventListener("click", () => {
+        sfx.playUpgradeChosen(true);
+        send({ type: "equipItem", itemId });
+      });
+      const salvageBtn = document.createElement("button");
+      salvageBtn.type = "button";
+      salvageBtn.dataset.salvageItem = itemId;
+      salvageBtn.textContent = `Salvage (+${def.salvageSparks} Sparks)`;
+      salvageBtn.addEventListener("click", () => {
+        send({ type: "salvageItem", itemId });
+      });
+      actions.append(equipBtn, salvageBtn);
+      row.append(info, actions);
+      vaultList.appendChild(row);
+    }
+  }
+
+  forgeReliquary.replaceChildren(bonusBar, loadoutGrid, vaultList);
+}
+
 function refreshForgeModal(): void {
   if (forgeModal.hidden || !snapshot) return;
   const self = snapshot.commanders.find((c) => c.id === snapshot!.selfCommanderId);
+  renderForgeReliquary(self);
   const myFaction = self?.faction ?? selectedFaction;
   const baseOrigin =
     location.port === "15173"
@@ -1474,6 +1798,12 @@ function submitCommsMessage(textOverride?: string, channelOverride?: CommsChanne
 
 fields.commsSend.addEventListener("click", () => {
   submitCommsMessage();
+  blurActive();
+});
+
+fields.commsToggle.addEventListener("click", () => {
+  const collapsed = fields.commsWidget.classList.toggle("collapsed");
+  fields.commsToggle.textContent = collapsed ? "+" : "−";
   blurActive();
 });
 

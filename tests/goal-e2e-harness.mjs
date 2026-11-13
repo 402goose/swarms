@@ -229,12 +229,48 @@ async function runHarness() {
       "8-META-FORGE-PROPOSAL",
       `Forged in-game wish [${wishBody.proposal.id}] ($${wishBody.proposal.rewardUsd} USD) into .plan/milestone/m2-community-wishes.yaml`,
     );
+
+    // 9. Reliquary Itemization, 4-Slot Equipment Loadout & Sanctuary Spoils Vault
+    const reliquaryRes = await fetch(`${API_URL}/v1/reliquary`);
+    assert.equal(reliquaryRes.status, 200);
+    const reliquaryCatalog = await reliquaryRes.json();
+    assert.equal(Object.keys(reliquaryCatalog.items).length, 12);
+
+    const equipRes = await fetch(`${API_URL}/v1/reliquary/equip`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        resumeToken: humanWelcome.resumeToken,
+        itemId: "wardens_plate",
+      }),
+    });
+    assert.equal(equipRes.status, 200);
+    const equipBody = await equipRes.json();
+    assert.equal(equipBody.ok, true);
+    assert.equal(equipBody.slot, "armor");
+
+    const salvageRes = await fetch(`${API_URL}/v1/reliquary/salvage`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        resumeToken: humanWelcome.resumeToken,
+        itemId: "wardens_plate",
+      }),
+    });
+    assert.equal(salvageRes.status, 200);
+    const salvageBody = await salvageRes.json();
+    assert.equal(salvageBody.ok, true);
+    assert.equal(salvageBody.sparksGranted, 25);
+    logPass(
+      "9-RELIQUARY-VAULT-SALVAGE",
+      `Equipped [Warden's Covenant Plate] into armor slot & salvaged at Sanctuary Anvil for +${salvageBody.sparksGranted} Sparks`,
+    );
   } finally {
     humanClient.close();
     allyClient.close();
   }
 
-  // 9. Run all 5 .plan/checks/*.test.mjs verification scripts
+  // 10. Run all 5 .plan/checks/*.test.mjs verification scripts
   for (const checkScript of [
     ".plan/checks/taskmarket-tap.test.mjs",
     ".plan/checks/weapons-sim.test.mjs",

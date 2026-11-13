@@ -324,3 +324,198 @@ export const WEAPONS = {
 
 export type WeaponId = keyof typeof WEAPONS;
 export const WEAPON_IDS = Object.keys(WEAPONS) as WeaponId[];
+
+export const RELIQUARY_SLOTS = ["weapon_rune", "armor", "relic_ring", "war_banner"] as const;
+export type ReliquarySlot = (typeof RELIQUARY_SLOTS)[number];
+
+export const RELIQUARY_RARITIES = ["runic", "sovereign", "mythic"] as const;
+export type ReliquaryRarity = (typeof RELIQUARY_RARITIES)[number];
+
+export interface ReliquaryItemDef {
+  id: string;
+  slot: ReliquarySlot;
+  rarity: ReliquaryRarity;
+  label: string;
+  lore: string;
+  damagePct: number;
+  bonusHp: number;
+  bonusCommand: number;
+  bonusSwarmCap: number;
+  salvageSparks: number;
+  score: number;
+  color: number;
+}
+
+export const RELIQUARY_ITEMS = {
+  ashbrand_seal: {
+    id: "ashbrand_seal",
+    slot: "weapon_rune",
+    rarity: "runic",
+    label: "Ashbrand Seal",
+    lore: "Etched by Sanctuary smiths to channel raw Spark heat into every bolt and scythe arc.",
+    damagePct: 15,
+    bonusHp: 0,
+    bonusCommand: 5,
+    bonusSwarmCap: 0,
+    salvageSparks: 25,
+    score: 100,
+    color: 0x5bc0eb,
+  },
+  choirbane_sigil: {
+    id: "choirbane_sigil",
+    slot: "weapon_rune",
+    rarity: "sovereign",
+    label: "Choirbane Sigil",
+    lore: "Wrested from the SE Sanctum; hums at the resonant frequency that shatters Bone Choir ribcages.",
+    damagePct: 28,
+    bonusHp: 15,
+    bonusCommand: 15,
+    bonusSwarmCap: 1,
+    salvageSparks: 50,
+    score: 220,
+    color: 0xf5c84c,
+  },
+  first_seal_edge: {
+    id: "first_seal_edge",
+    slot: "weapon_rune",
+    rarity: "mythic",
+    label: "Edge of the First Seal",
+    lore: "A mythic covenant shard forged before the Breach; every strike sears both flesh and Animus.",
+    damagePct: 45,
+    bonusHp: 30,
+    bonusCommand: 20,
+    bonusSwarmCap: 2,
+    salvageSparks: 85,
+    score: 380,
+    color: 0xff5a4e,
+  },
+  wardens_plate: {
+    id: "wardens_plate",
+    slot: "armor",
+    rarity: "runic",
+    label: "Warden's Covenant Plate",
+    lore: "Sanctuary-blessed lamellar worn by Solar Wardens patrolling the Outer Crypts.",
+    damagePct: 5,
+    bonusHp: 35,
+    bonusCommand: 0,
+    bonusSwarmCap: 0,
+    salvageSparks: 25,
+    score: 105,
+    color: 0x5bc0eb,
+  },
+  ossuary_cuirass: {
+    id: "ossuary_cuirass",
+    slot: "armor",
+    rarity: "sovereign",
+    label: "Ossuary Cuirass",
+    lore: "Fused from a dozen fallen Bone Wardens; absorbs lethal volleys in the Blood Moor Crucible.",
+    damagePct: 10,
+    bonusHp: 60,
+    bonusCommand: 15,
+    bonusSwarmCap: 1,
+    salvageSparks: 50,
+    score: 230,
+    color: 0xf5c84c,
+  },
+  undying_shroud: {
+    id: "undying_shroud",
+    slot: "armor",
+    rarity: "mythic",
+    label: "Shroud of the Undying Sovereign",
+    lore: "Woven from the burial vestments of the First Necromancer; death itself hesitates to claim its bearer.",
+    damagePct: 20,
+    bonusHp: 95,
+    bonusCommand: 25,
+    bonusSwarmCap: 2,
+    salvageSparks: 85,
+    score: 390,
+    color: 0xff5a4e,
+  },
+  ember_band: {
+    id: "ember_band",
+    slot: "relic_ring",
+    rarity: "runic",
+    label: "Ember Covenant Ring",
+    lore: "Warm iron signet that steadies an Animus during long sorties beyond the Sanctuary.",
+    damagePct: 8,
+    bonusHp: 10,
+    bonusCommand: 15,
+    bonusSwarmCap: 0,
+    salvageSparks: 25,
+    score: 100,
+    color: 0x5bc0eb,
+  },
+  blood_moor_signet: {
+    id: "blood_moor_signet",
+    slot: "relic_ring",
+    rarity: "sovereign",
+    label: "Blood Moor Signet",
+    lore: "Taken from a rival warlord in the central arena; pulses with stolen Essence and war spoils.",
+    damagePct: 18,
+    bonusHp: 20,
+    bonusCommand: 25,
+    bonusSwarmCap: 1,
+    salvageSparks: 50,
+    score: 225,
+    color: 0xf5c84c,
+  },
+  bone_choir_eye: {
+    id: "bone_choir_eye",
+    slot: "relic_ring",
+    rarity: "mythic",
+    label: "Eye of the Bone Choir",
+    lore: "The crystallized chorus-core of the SE Sanctum raid boss; grants overwhelming Command authority.",
+    damagePct: 32,
+    bonusHp: 35,
+    bonusCommand: 40,
+    bonusSwarmCap: 2,
+    salvageSparks: 85,
+    score: 385,
+    color: 0xff5a4e,
+  },
+  thrall_standard: {
+    id: "thrall_standard",
+    slot: "war_banner",
+    rarity: "runic",
+    label: "Thrall Bone Standard",
+    lore: "Runic spine-pole that binds two extra swarmlings to your Commander's call.",
+    damagePct: 5,
+    bonusHp: 15,
+    bonusCommand: 5,
+    bonusSwarmCap: 2,
+    salvageSparks: 25,
+    score: 110,
+    color: 0x5bc0eb,
+  },
+  breach_herald: {
+    id: "breach_herald",
+    slot: "war_banner",
+    rarity: "sovereign",
+    label: "Herald of the Breach",
+    lore: "Obsidian Reaper war-pennant that drives your undead host into a relentless frenzy.",
+    damagePct: 16,
+    bonusHp: 25,
+    bonusCommand: 10,
+    bonusSwarmCap: 4,
+    salvageSparks: 50,
+    score: 235,
+    color: 0xf5c84c,
+  },
+  ashen_host_banner: {
+    id: "ashen_host_banner",
+    slot: "war_banner",
+    rarity: "mythic",
+    label: "Banner of the Ashen Host",
+    lore: "Mythic standard of the Catacomb Lords; expands your legion by +6 thralls and empowers every strike.",
+    damagePct: 28,
+    bonusHp: 50,
+    bonusCommand: 20,
+    bonusSwarmCap: 6,
+    salvageSparks: 85,
+    score: 400,
+    color: 0xff5a4e,
+  },
+} satisfies Record<string, ReliquaryItemDef>;
+
+export type ReliquaryItemId = keyof typeof RELIQUARY_ITEMS;
+export const RELIQUARY_ITEM_IDS = Object.keys(RELIQUARY_ITEMS) as ReliquaryItemId[];
