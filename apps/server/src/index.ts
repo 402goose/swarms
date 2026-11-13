@@ -25,6 +25,12 @@ import {
   listForgeProposals,
   verifyTapHttpOrSandbox,
 } from "./tap-forge.ts";
+import {
+  buildOpenApiSpec,
+  buildVisaActionsDescriptor,
+  handleVisaActionsAct,
+  handleVisaActionsRead,
+} from "./visa-actions.ts";
 import { type SessionRecord, ZoneRuntime } from "./zone.ts";
 
 const port = Number(process.env.PORT ?? 18787);
@@ -132,12 +138,15 @@ function json(
   body: unknown,
   origin?: string,
   reqHost?: string,
+  extraHeaders?: Record<string, string>,
 ): void {
   const text = JSON.stringify(body);
   response.writeHead(status, {
     "content-type": "application/json",
     "content-length": Buffer.byteLength(text),
     "access-control-allow-origin": corsOrigin(origin, reqHost),
+    "access-control-expose-headers": "www-authenticate,x-payment-required",
+    ...(extraHeaders ?? {}),
   });
   response.end(text);
 }
@@ -154,7 +163,8 @@ const httpServer = createServer((request, response) => {
       "access-control-allow-origin": corsOrigin(origin, reqHost),
       "access-control-allow-methods": "GET,POST,OPTIONS",
       "access-control-allow-headers":
-        "content-type,signature-input,signature,content-digest,signature-agent,x-tap-key-id",
+        "content-type,idempotency-key,authorization,x-payment,signature-input,signature,content-digest,signature-agent,x-tap-key-id",
+      "access-control-expose-headers": "www-authenticate,x-payment-required",
     });
     response.end();
     return;
@@ -162,6 +172,105 @@ const httpServer = createServer((request, response) => {
   const publicOrigin = reqHost ? `http://${reqHost}` : `http://${host}:${port}`;
   if (url.pathname === "/.well-known/opentask") {
     return json(response, 200, buildOpenTaskDiscovery(publicOrigin), origin, reqHost);
+  }
+  if (url.pathname === "/.well-known/visa-actions") {
+    return json(response, 200, buildVisaActionsDescriptor(publicOrigin), origin, reqHost);
+  }
+  if (url.pathname === "/openapi.json") {
+    return json(response, 200, buildOpenApiSpec(publicOrigin), origin, reqHost);
+  }
+  if (url.pathname === "/v1/actions/read" && request.method === "GET") {
+    const query: { action?: string; commander_id?: string; receipt_id?: string } = {};
+    const qAction = url.searchParams.get("action");
+    const qCommander = url.searchParams.get("commander_id");
+    const qReceipt = url.searchParams.get("receipt_id");
+    if (qAction) query.action = qAction;
+    if (qCommander) query.commander_id = qCommander;
+    if (qReceipt) query.receipt_id = qReceipt;
+    const result = handleVisaActionsRead(runtime, query);
+    return json(response, result.status, result.body, origin, reqHost);
+  }
+  if (url.pathname.startsWith("/v1/actions/receipts/") && request.method === "GET") {
+    const receiptId = url.pathname.slice("/v1/actions/receipts/".length);
+    const result = handleVisaActionsRead(runtime, {
+      action: "get_receipt",
+      receipt_id: receiptId,
+    });
+    return json(response, result.status, result.body, origin, reqHost);
+  }
+  if (url.pathname === "/v1/actions/act" && request.method === "POST") {
+    let bodyText = "";
+    request.on("data", (chunk) => {
+      if (bodyText.length < 32_768) bodyText += String(chunk);
+    });
+    request.on("end", async () => {
+      try {
+        const parsed = JSON.parse(bodyText || "{}");
+        const result = await handleVisaActionsAct(runtime, {
+          headers: request.headers as Record<string, string | string[] | undefined>,
+          body: parsed,
+          baseUrl: publicOrigin,
+        });
+        return json(response, result.status, result.body, origin, reqHost, result.headers);
+      } catch (err) {
+        return json(
+          response,
+          400,
+          {
+            ok: false,
+            code: "invalid_json",
+            message: err instanceof Error ? err.message : "Invalid JSON body",
+            do_not_relay_to_owner: true,
+          },
+          origin,
+          reqHost,
+        );
+      }
+    });
+    return;
+  }
+  if (url.pathname === "/v1/actions/testnet" && request.method === "GET") {
+    const desc = buildVisaActionsDescriptor(publicOrigin);
+    return json(
+      response,
+      200,
+      {
+        ok: true,
+        environment: "testnet",
+        testnet: desc.testnet,
+        standards: desc.standards,
+        sampleMppHeader: 'Authorization: Payment token="mpp_test_ousd_42429"',
+        sampleX402Header: 'X-PAYMENT: {"scheme":"x402/1","txHash":"0xtest402"}',
+      },
+      origin,
+      reqHost,
+    );
+  }
+  if (url.pathname === "/v1/actions/testnet/faucet" && request.method === "POST") {
+    const session = runtime.join({
+      name: "VisaTestnetAgent",
+      kind: "agent",
+      faction: "wardens",
+      character: "boneknight",
+      tier: "tap",
+      tapKeyId: "tap_testnet_faucet",
+    });
+    return json(
+      response,
+      201,
+      {
+        ok: true,
+        environment: "testnet",
+        commanderId: session.commanderId,
+        accountId: session.accountId,
+        resumeToken: session.token,
+        sparksGranted: runtime.ledger.balance(session.accountId),
+        testMppToken: `mpp_test_${session.commanderId}_ousd`,
+        testX402Proof: `x402_test_${session.commanderId}_ousd`,
+      },
+      origin,
+      reqHost,
+    );
   }
   if (url.pathname === "/v1/guides/tap") {
     return json(response, 200, buildTapAgentGuide(publicOrigin), origin, reqHost);

@@ -265,12 +265,123 @@ async function runHarness() {
       "9-RELIQUARY-VAULT-SALVAGE",
       `Equipped [Warden's Covenant Plate] into armor slot & salvaged at Sanctuary Anvil for +${salvageBody.sparksGranted} Sparks`,
     );
+
+    // 10. Visa Actions Engine Conformance (#12795: OpenAPI + x402/MPP + Idempotency + Read-Confirm + Error Codes + Testnet)
+    const openApiRes = await fetch(`${API_URL}/openapi.json`);
+    assert.equal(openApiRes.status, 200);
+    const openApiDoc = await openApiRes.json();
+    assert.equal(openApiDoc.openapi, "3.1.0");
+    assert.equal(openApiDoc["x-visa"]?.service, "swarms");
+    assert.equal(openApiDoc["x-visa"]?.signingPolicy?.allowMonetaryPermits, false);
+
+    // 10a. Testnet faucet mints commander + MPP token
+    const faucetRes = await fetch(`${API_URL}/v1/actions/testnet/faucet`, { method: "POST" });
+    assert.equal(faucetRes.status, 201);
+    const faucetBody = await faucetRes.json();
+    assert(faucetBody.commanderId && faucetBody.testMppToken);
+
+    // 10b. Structured door error code (`not_read_only`) when calling `act` action on `read` door
+    const wrongDoorRes = await fetch(
+      `${API_URL}/v1/actions/read?action=buy_field_service&commander_id=${faucetBody.commanderId}`,
+    );
+    assert.equal(wrongDoorRes.status, 400);
+    const wrongDoorBody = await wrongDoorRes.json();
+    assert.equal(wrongDoorBody.code, "not_read_only");
+    assert.equal(wrongDoorBody.waiting_on?.call?.tool, "act");
+
+    // 10c. HTTP 402 Payment Required (MPP + x402 challenge headers) when payment_mode === "require_402"
+    const challengeRes = await fetch(`${API_URL}/v1/actions/act`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": "idem_402_probe_1",
+      },
+      body: JSON.stringify({
+        service: "swarms",
+        action: "buy_field_service",
+        payment_mode: "require_402",
+        args: { commander_id: faucetBody.commanderId, service: "mend" },
+      }),
+    });
+    assert.equal(challengeRes.status, 402);
+    assert(challengeRes.headers.get("www-authenticate")?.startsWith("Payment "));
+    assert(challengeRes.headers.get("x-payment-required")?.includes("x402/1"));
+
+    // 10d. Settle paid call with MPP Authorization header + Idempotency-Key + verify Read-After-Write receipt
+    const idemKey = `idem_mpp_mend_${Date.now()}`;
+    const paidActRes = await fetch(`${API_URL}/v1/actions/act`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": idemKey,
+        authorization: `Payment ${faucetBody.testMppToken}`,
+      },
+      body: JSON.stringify({
+        service: "swarms",
+        action: "buy_field_service",
+        payment_mode: "require_402",
+        args: { commander_id: faucetBody.commanderId, service: "mend" },
+      }),
+    });
+    assert.equal(paidActRes.status, 200);
+    const paidActBody = await paidActRes.json();
+    assert.equal(paidActBody.replayed, false);
+    assert.equal(paidActBody.receipt.paymentRail, "mpp");
+    const receiptId = paidActBody.receipt.receiptId;
+
+    // 10e. Retry with identical Idempotency-Key returns replayed: true (no double execution)
+    const replayActRes = await fetch(`${API_URL}/v1/actions/act`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": idemKey,
+        authorization: `Payment ${faucetBody.testMppToken}`,
+      },
+      body: JSON.stringify({
+        service: "swarms",
+        action: "buy_field_service",
+        payment_mode: "require_402",
+        args: { commander_id: faucetBody.commanderId, service: "mend" },
+      }),
+    });
+    assert.equal(replayActRes.status, 200);
+    const replayActBody = await replayActRes.json();
+    assert.equal(replayActBody.replayed, true);
+    assert.equal(replayActBody.receipt.receiptId, receiptId);
+
+    // 10f. Retry same Idempotency-Key with different payload returns 409 Conflict
+    const mismatchRes = await fetch(`${API_URL}/v1/actions/act`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "idempotency-key": idemKey,
+      },
+      body: JSON.stringify({
+        service: "swarms",
+        action: "buy_field_service",
+        args: { commander_id: faucetBody.commanderId, service: "armory" },
+      }),
+    });
+    assert.equal(mismatchRes.status, 409);
+    const mismatchBody = await mismatchRes.json();
+    assert.equal(mismatchBody.code, "idempotency_key_payload_mismatch");
+
+    // 10g. Confirm write via read door (`/v1/actions/receipts/:receiptId`)
+    const confirmReadRes = await fetch(`${API_URL}/v1/actions/receipts/${receiptId}`);
+    assert.equal(confirmReadRes.status, 200);
+    const confirmReadBody = await confirmReadRes.json();
+    assert.equal(confirmReadBody.confirmed, true);
+    assert.equal(confirmReadBody.receipt.receiptId, receiptId);
+    logPass(
+      "10-VISA-ACTIONS-ENGINE-CONFORMANCE",
+      `Verified OpenAPI 3.1 + /.well-known/visa-actions, 402 MPP/x402 challenge & settlement, Idempotency-Key replay/409, and read receipt ${receiptId}`,
+    );
   } finally {
     humanClient.close();
     allyClient.close();
   }
 
-  // 10. Run all 5 .plan/checks/*.test.mjs verification scripts
+  // 11. Run all 5 .plan/checks/*.test.mjs verification scripts
   for (const checkScript of [
     ".plan/checks/taskmarket-tap.test.mjs",
     ".plan/checks/weapons-sim.test.mjs",
@@ -280,9 +391,9 @@ async function runHarness() {
   ]) {
     execFileSync("node", [checkScript], { stdio: "pipe" });
   }
-  logPass("9-PLAN-CHECKS", "All 5 .plan/checks/*.test.mjs milestone verification scripts passed");
+  logPass("11-PLAN-CHECKS", "All 5 .plan/checks/*.test.mjs milestone verification scripts passed");
 
-  console.log("=== ALL 9 E2E HARNESS PILLARS PASSED ===");
+  console.log("=== ALL 11 E2E HARNESS PILLARS PASSED ===");
 }
 
 runHarness().catch((err) => {
