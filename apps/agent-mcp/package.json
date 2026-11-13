@@ -1,0 +1,1 @@
+{"name":"@swarms/agent-mcp","version":"0.1.0","private":true,"type":"module","scripts":{"bot":"tsx src/bot.ts","commander":"tsx src/commander.ts"},"dependencies":{"@swarms/agent-sdk":"workspace:*","@swarms/commander":"workspace:*","@swarms/protocol":"workspace:*","@swarms/worldgen":"workspace:*"}}

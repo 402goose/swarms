@@ -1,0 +1,35 @@
+{
+  "name": "swarms",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.14.0",
+  "scripts": {
+    "dev": "concurrently -k -n server,web \"pnpm --filter @swarms/server dev\" \"pnpm --filter @swarms/web dev\"",
+    "dev:server": "pnpm --filter @swarms/server dev",
+    "dev:web": "pnpm --filter @swarms/web dev",
+    "bot": "pnpm --filter @swarms/agent-mcp bot",
+    "build": "pnpm --filter @swarms/web build && pnpm typecheck",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "biome check apps packages tests --max-diagnostics=100",
+    "format": "biome check --write apps packages tests",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "pnpm typecheck && pnpm lint && pnpm test"
+  },
+  "dependencies": {
+    "pixi.js": "^8.14.3",
+    "ws": "^8.18.3",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.8",
+    "@types/node": "^24.10.1",
+    "@types/ws": "^8.18.1",
+    "concurrently": "^9.2.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vite": "^7.2.4",
+    "vitest": "^4.0.13"
+  }
+}

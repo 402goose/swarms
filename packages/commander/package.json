@@ -1,0 +1,1 @@
+{"name":"@swarms/commander","version":"0.1.0","private":true,"type":"module","exports":{".":"./src/index.ts"},"types":"./src/index.ts","dependencies":{"@swarms/content":"workspace:*","@swarms/protocol":"workspace:*","@swarms/worldgen":"workspace:*","zod":"latest"}}

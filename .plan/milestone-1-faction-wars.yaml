@@ -1,0 +1,83 @@
+# agent-forge / TaskMarket Milestone Plan for Swarms: The Catacomb Ledger
+# Compatible with https://github.com/hathbanger/agent-forge (.plan/*.yaml specification)
+# Micro-Ledger Unit Rate: 1 Spark = $0.001 USD (SPARK_USD_RATE = 0.001)
+
+milestone: 1
+name: "Swarms Catacomb Faction Wars & Autonomous Agent Meta-Loop"
+currency: "USD"
+micro_rate:
+  unit: "Spark"
+  usd_per_spark: 0.001
+
+epics:
+  - id: "epic-faction-warfare"
+    name: "Solar Wardens (White Hat) vs. Obsidian Reapers (Black Hat) Dungeon War"
+    items:
+      - id: "fw-01"
+        title: "Two-sided Faction Ledger, PvP Essence Plunder, and Treasury War Spoils"
+        status: "completed"
+        reward_usd: 5.00
+        touches:
+          - "packages/protocol/src/index.ts"
+          - "packages/content/src/index.ts"
+          - "packages/sim/src/index.ts"
+          - "apps/server/src/zone.ts"
+          - "apps/web/src/main.ts"
+        acceptance:
+          - "Commanders join as either Solar Wardens (wardens) or Obsidian Reapers (reapers)"
+          - "Rival faction commander kills outside Sanctuary plunder 50% carried Essence and settle a Treasury pvp_spoil Spark bounty ($0.025-$0.035)"
+          - "Top HUD displays live Faction War Scoreboard and $0.001/Spark USD valuation"
+
+      - id: "fw-02"
+        title: "Emergency SOS Flare Reinforcements & Escort Rescue Contract Broadcast"
+        status: "completed"
+        reward_usd: 5.00
+        touches:
+          - "packages/protocol/src/index.ts"
+          - "packages/content/src/index.ts"
+          - "apps/server/src/zone.ts"
+          - "packages/commander/src/index.ts"
+          - "apps/web/src/main.ts"
+        acceptance:
+          - "Pressing [B] or clicking SOS Flare spends 40 Sparks ($0.040) for +30 HP triage and +2 elite Faction Vanguard mercenaries"
+          - "Automatically posts a 50-Spark ($0.050) Treasury escort_alive rescue contract so allied agents rush to defend the caller"
+          - "JEV epistemic planner scores active SOS rescue contracts for same-faction commanders"
+
+      - id: "fw-03"
+        title: "Live x402 / TaskMarket Settlement Adapter for In-Dungeon SOS & PvP Contracts"
+        status: "open"
+        reward_usd: 15.00
+        touches:
+          - "packages/ledger/src/index.ts"
+          - "apps/server/src/zone.ts"
+          - "apps/agent-mcp/src/index.ts"
+        acceptance:
+          - "Optional TaskMarket bridge mirrors high-value dungeon contracts (>= 100 Sparks / $0.10) to external agent workers via TAP Ed25519 signatures"
+          - "Deterministic replay receipt verifies escort_alive or clear_area completion before releasing settlement"
+
+  - id: "epic-jev-swarm-arena"
+    name: "JEV Epistemic-Value Commander Tournament & Wave Director"
+    items:
+      - id: "jev-01"
+        title: "Wave-After-Wave Threat Director (Catacomb Surges & Relic Extraction Sieges)"
+        status: "completed"
+        reward_usd: 5.00
+        touches:
+          - "packages/sim/src/index.ts"
+          - "apps/server/src/zone.ts"
+          - "apps/web/src/audio.ts"
+          - "apps/web/src/main.ts"
+        acceptance:
+          - "Periodic hunter waves spawn outside Sanctuary and march toward active commanders"
+          - "Picking up an Ancient Relic triggers an immediate Relic Siege wave and War Horn audio cue"
+
+      - id: "jev-02"
+        title: "Multi-Step Rollout Horizon for JEV Planner (2-Tick Lookahead)"
+        status: "open"
+        reward_usd: 10.00
+        touches:
+          - "packages/commander/src/index.ts"
+          - "tests/commander.test.ts"
+        acceptance:
+          - "Extend evaluateJev candidate scoring with 2-step discounted utility rollout under wave siege pressure"
+          - "Benchmark JEV-v2 vs heuristic-v1 survival and Spark/min across 500 deterministic ticks"

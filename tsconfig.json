@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node", "vitest/globals"],
+    "baseUrl": ".",
+    "paths": {
+      "@swarms/protocol": ["packages/protocol/src/index.ts"],
+      "@swarms/sim": ["packages/sim/src/index.ts"],
+      "@swarms/worldgen": ["packages/worldgen/src/index.ts"],
+      "@swarms/content": ["packages/content/src/index.ts"],
+      "@swarms/bounties": ["packages/bounties/src/index.ts"],
+      "@swarms/persistence": ["packages/persistence/src/index.ts"],
+      "@swarms/agent-sdk": ["packages/agent-sdk/src/index.ts"],
+      "@swarms/commander": ["packages/commander/src/index.ts"]
+    }
+  },
+  "include": ["apps/**/*.ts", "packages/**/*.ts", "tests/**/*.ts", "vitest.config.ts"],
+  "exclude": ["node_modules", "dist", "apps/web/dist"]
+}

@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SWARMS — Dungeon Command</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%23e8c15a'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23111111'/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=UnifrakturMaguntia&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main id="app">
+      <section id="game" aria-label="Swarms dungeon viewport"></section>
+      <header class="hud hud-top">
+        <div class="hud-brand">
+          <p class="eyebrow">Persistent zone 01</p>
+          <h1>SWARMS</h1>
+          <p class="objective" id="objective-banner">
+            Sortie from the Sanctuary · cull skeletons · raise with essence · extract east to bank it
+          </p>
+          <div class="war-table" role="group" aria-label="Sanctuary War Table and Field Services">
+            <span class="war-table-label">Belt</span>
+            <button id="svc-mend" type="button" title="Field Mend Flask [Z]: Restore +35 HP (25 Sparks / $0.025)">Mend · 25 [Z]</button>
+            <button id="svc-rally" type="button" title="Rally Warhorn [V]: Restore +50 Command energy (20 Sparks / $0.020)">Rally · 20 [V]</button>
+            <button id="svc-mercenary" type="button" title="Bone Guards [T]: Hire +2 Elite Bone Guards (40 Sparks / $0.040)">Guards · 40 [T]</button>
+            <button id="svc-sos" class="sos-btn" type="button" title="Emergency SOS Flare [B]: +30 HP, +2 Vanguard Guards &amp; broadcast a 50-Spark ($0.050) rescue contract (40 Sparks)">SOS · 40 [B]</button>
+            <button id="svc-agent" class="agent-btn" type="button" title="Deploy an autonomous JEV-v1 AI Commander onto your faction [N] (60 Sparks / $0.060)">+ JEV · 60 [N]</button>
+            <button id="svc-swarm-war" class="agent-btn" type="button" title="Unleash 8-Swarm Faction War [P]: Deploy Wardens vs Reapers JEV Commanders + Catacomb Surge (10 Sparks)">⚡ Swarm War [P]</button>
+            <button id="svc-armory" type="button" title="Weapon Seal [U]: Unlock a new weapon or bonus boon (45 Sparks / $0.045)">Armory · 45 [U]</button>
+            <button id="svc-scout" type="button" title="Ping the Bone Choir chamber (10 Sparks / $0.010)">Scout · 10</button>
+            <button id="open-forge" class="forge-btn" type="button" title="Open Tactical Doctrines, TaskMarket &amp; Multiplayer Invite Hub [I]">Forge &amp; Doctrines [I]</button>
+            <button id="audio-toggle" type="button" title="Toggle WebAudio SFX (Hotkey: M)">SFX: ON</button>
+          </div>
+        </div>
+        <dl class="stats">
+          <div><dt>Commander</dt><dd id="commander">Connecting…</dd></div>
+          <div><dt>Faction War</dt><dd id="faction-war">Wardens 0 · Reapers 0</dd></div>
+          <div hidden><dt>Health</dt><dd id="health">—</dd></div>
+          <div hidden><dt>Command</dt><dd id="command">—</dd></div>
+          <div><dt>Sparks ($0.001)</dt><dd id="sparks">—</dd></div>
+          <div><dt>Escrowed</dt><dd id="escrowed">—</dd></div>
+          <div><dt>Status</dt><dd id="status">Connecting</dd></div>
+          <div hidden><dt>Level</dt><dd id="level">Lv 1</dd></div>
+          <div hidden><dt>Essence</dt><dd id="essence">—</dd></div>
+          <div hidden><dt>XP</dt><dd><span class="xp-track"><i id="xp-fill"></i></span></dd></div>
+          <div hidden><dt>Boons</dt><dd id="upgrades" class="wrap">—</dd></div>
+        </dl>
+      </header>
+
+      <aside class="hud board" aria-label="Bounty board">
+        <div class="board-head">
+          <div>
+            <p class="eyebrow">Contract board</p>
+            <h2>Live bounties</h2>
+          </div>
+          <span id="tick">tick 0</span>
+          <button id="board-toggle" type="button" aria-expanded="false">Show</button>
+        </div>
+        <div class="post-row">
+          <button id="post-kill" type="button">Post: cull 5 · 75</button>
+          <button id="post-relic" type="button">Post: relic · 125</button>
+          <button id="post-escort" type="button" title="Post a 75-Spark escort contract so bots or rivals guard you">Hire Escort · 75</button>
+        </div>
+        <div id="contracts" class="contracts"></div>
+        <h3>Zone feed</h3>
+        <ol id="feed" class="feed"></ol>
+      </aside>
+
+      <footer class="hud controls">
+        <span data-hint="move"><kbd>WASD</kbd> move commander</span>
+        <span data-hint="fire"><kbd>Hold LMB</kbd> fire at cursor</span>
+        <span data-hint="swarm"><kbd>Right-click</kbd> swarm attack-move</span>
+        <span data-hint="move"><kbd>Shift+RMB</kbd> move only</span>
+        <span data-hint="swarm"><kbd>MMB</kbd> defend</span>
+        <span><kbd>Wheel/Tab</kbd> switch weapon</span>
+        <span data-hint="raise"><kbd>G</kbd> <span id="raise-label">Raise swarmling</span></span>
+        <span class="spell" id="spell-nova"><kbd>Q</kbd> <span id="spell-nova-label">Nova · 45</span></span>
+        <span class="spell" id="spell-volley"><kbd>E</kbd> <span id="spell-volley-label">Volley · 30</span></span>
+        <span class="spell" id="spell-shell"><kbd>R</kbd> <span id="spell-shell-label">Shell · 25</span></span>
+        <span class="spell" id="spell-frost"><img class="spell-icon" src="/assets/spell-frost-nova.png" alt="" /><kbd>F</kbd> <span id="spell-frost-label">Frost · 35</span></span>
+        <span class="spell" id="spell-chain"><img class="spell-icon" src="/assets/spell-chain-lightning.png" alt="" /><kbd>C</kbd> <span id="spell-chain-label">Chain · 40</span></span>
+        <span><kbd>B</kbd> SOS reinforce</span>
+        <span><kbd>H</kbd> hold / stop</span>
+        <span><kbd>X</kbd> extract</span>
+        <span><kbd>M</kbd> mute</span>
+        <button id="extract" type="button">Extract</button>
+        <button id="new-swarm" type="button">New swarm</button>
+      </footer>
+
+      <div id="overlay" class="overlay" hidden>
+        <div class="overlay-card">
+          <h2 id="overlay-title"></h2>
+          <p id="overlay-text"></p>
+          <button id="overlay-revive" type="button" hidden>⚡ Expedite Revive · 30 Sparks</button>
+        </div>
+      </div>
+
+      <div id="draft" class="draft" hidden>
+        <div class="draft-card">
+          <p class="eyebrow">Level up</p>
+          <h2 id="draft-title">Choose a boon</h2>
+          <div id="draft-options" class="draft-options"></div>
+          <p class="draft-hint">Click or press 1 · 2 · 3 — unpicked boons auto-pick in 10s</p>
+        </div>
+      </div>
+      <section id="player-hud" aria-label="Commander status" hidden>
+        <img id="hud-portrait" src="/assets/commander.png" alt="" />
+        <div class="hud-main">
+          <div class="hud-row">
+            <strong id="hud-class">Commander</strong>
+            <span id="hud-level">Lv 1</span>
+            <span id="hud-weapon">Bolt Wand</span>
+            <span id="hud-stance">follow</span>
+          </div>
+          <div class="bar hp"><i id="hud-hp-fill"></i><span id="hud-hp-text">—</span></div>
+          <div class="bar cmd"><i id="hud-cmd-fill"></i><span id="hud-cmd-text">—</span></div>
+          <div class="bar xp"><i id="hud-xp-fill"></i><span id="hud-xp-text">—</span></div>
+          <div class="hud-row small"><span id="hud-inventory">—</span></div>
+          <div id="hud-buffs" class="hud-buffs"></div>
+        </div>
+      </section>
+
+      <div id="char-select" class="char-select" hidden>
+        <div class="char-wrap">
+          <p class="eyebrow">New commander · 1 Spark = $0.001 micro-stake</p>
+          <h2>Choose your Allegiance &amp; Vessel</h2>
+          <div id="faction-cards" class="faction-cards" role="radiogroup" aria-label="Choose your faction"></div>
+          <div id="char-cards" class="char-cards"></div>
+          <div class="char-name-row">
+            <input id="char-name" type="text" maxlength="24" autocomplete="off" aria-label="Commander name" />
+            <button id="char-enter" type="button" disabled>Enter the dungeon</button>
+          </div>
+          <p class="draft-hint">Class is permanent for this commander — pick, then enter. Keys 1 · 2 · 3 select, Enter confirms. Returning commanders resume automatically.</p>
+        </div>
+      </div>
+
+      <div id="forge-modal" class="forge-modal" hidden>
+        <div class="forge-card">
+          <div class="forge-head">
+            <div>
+              <p class="eyebrow">Diablo-Grade Doctrines · TaskMarket · Live Swarm War</p>
+              <h2>Catacomb Forge, Auto-Doctrines &amp; Agent Hub</h2>
+            </div>
+            <button id="close-forge" type="button">Close [Esc / I]</button>
+          </div>
+          <div class="forge-grid">
+            <section class="forge-panel">
+              <h3>1. Preset Auto-Doctrines (Player &amp; JEV Agent Gambits)</h3>
+              <p class="forge-desc">Set automatic combat triggers so your commander (and allied <b>JEV-v1</b> agents) fire flasks, SOS flares, and seals automatically without clicking buttons:</p>
+              <div class="doctrine-list">
+                <label class="doctrine-row"><input id="doc-auto-mend" type="checkbox" checked /> <span><b>Auto-Mend Flask [Z]</b> — trigger at &lt;45% HP (25 Sparks)</span></label>
+                <label class="doctrine-row"><input id="doc-auto-sos" type="checkbox" checked /> <span><b>Auto-SOS Flare [B]</b> — trigger at &lt;28% HP (+30 HP, +2 Guards &amp; 50-Spark rescue contract)</span></label>
+                <label class="doctrine-row"><input id="doc-auto-rally" type="checkbox" /> <span><b>Auto-Rally Horn [V]</b> — trigger at &lt;20 Command in combat (20 Sparks)</span></label>
+                <label class="doctrine-row"><input id="doc-auto-armory" type="checkbox" /> <span><b>Auto-Weapon Seal [U]</b> — unlock new weapons when Credits &ge; 160 (45 Sparks)</span></label>
+              </div>
+              <h3>2. Live Faction Roster &amp; Swarm War</h3>
+              <div id="forge-roster" class="forge-roster"></div>
+              <div class="forge-actions">
+                <button id="forge-swarm-war" class="agent-btn" type="button">⚡ Unleash 8-Swarm Faction War [P] · 10 Sparks</button>
+                <button id="forge-spawn-agent" class="agent-btn" type="button">+ Deploy Allied JEV-v1 [N] · 60 Sparks</button>
+                <button id="forge-sos" class="sos-btn" type="button">Fire SOS Flare [B] · 40 Sparks</button>
+              </div>
+            </section>
+            <section class="forge-panel">
+              <h3>3. Ascension &amp; Dungeon Progression</h3>
+              <div class="forge-snippet">
+                <label>How Levels, Evolutions &amp; Victory Work</label>
+                <code>• Lv 1 Initiate: Class Starter (Wisp / Soul Lance / Grave Scythe) + Bolt Wand, Sanctuary grace
+• Lv 2–4 Raider: 3-Boon Draft on every level (1·2·3) · Lv 3 unlocks open-dungeon PvP &amp; Blood Contracts
+• Lv 5+ Arch-Commander: Evolve weapons (Storm Wand / Hellscatter / Phantom Lance), siege the 900-HP Bone Choir Boss (NE), and extract the Moon Relic!</code>
+              </div>
+              <h3>4. Invite Players, Headless Agents &amp; TaskMarket</h3>
+              <div class="forge-snippet">
+                <label>Multiplayer Faction Invite URL</label>
+                <code id="forge-invite-url">http://127.0.0.1:18787</code>
+              </div>
+              <div class="forge-snippet">
+                <label>Public Tunnel (1-command share for friends &amp; remote agents)</label>
+                <code>cloudflared tunnel --url http://127.0.0.1:18787</code>
+              </div>
+              <div class="forge-snippet">
+                <label>Spawn Headless JEV-v1 Agent from Terminal</label>
+                <code id="forge-agent-cmd">SWARMS_AGENT_PLANNER=jev-v1 pnpm --filter @swarms/agent-mcp commander</code>
+              </div>
+              <div class="forge-snippet">
+                <label>TaskMarket &amp; .plan/ Milestone Spec (.plan/milestone-1-faction-wars.yaml)</label>
+                <code id="forge-plan-summary">Loading /v1/taskmarket…</code>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
