@@ -24,6 +24,9 @@ export const ECONOMY = {
     sos: { label: "SOS Reinforcements", cost: 40, count: 2, heal: 30, bountyReward: 50 },
     agent: { label: "Deploy JEV Agent", cost: 60 },
     swarm_war: { label: "Unleash 8-Swarm Faction War", cost: 10 },
+    tap_verify: { label: "Attest TAP Identity", cost: 10 },
+    sovereign_edict: { label: "Sovereign Edict (TAP)", cost: 35, damage: 160, radius: 220 },
+    sanctuary_recall: { label: "Town Portal (Sanctuary)", cost: 15, heal: 90 },
   },
 } as const;
 

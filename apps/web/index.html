@@ -28,9 +28,12 @@
             <button id="svc-sos" class="sos-btn" type="button" title="Emergency SOS Flare [B]: +30 HP, +2 Vanguard Guards &amp; broadcast a 50-Spark ($0.050) rescue contract (40 Sparks)">SOS · 40 [B]</button>
             <button id="svc-agent" class="agent-btn" type="button" title="Deploy an autonomous JEV-v1 AI Commander onto your faction [N] (60 Sparks / $0.060)">+ JEV · 60 [N]</button>
             <button id="svc-swarm-war" class="agent-btn" type="button" title="Unleash 8-Swarm Faction War [P]: Deploy Wardens vs Reapers JEV Commanders + Catacomb Surge (10 Sparks)">⚡ Swarm War [P]</button>
+            <button id="svc-tap" class="forge-btn" type="button" title="Attest Visa TAP Identity [O] (RFC 9421): Unlock Golden Runic Halo, +35 Max HP, +3 Elite Guards &amp; [K] Sovereign Edict (10 Sparks)">✓ TAP · 10 [O]</button>
+            <button id="svc-edict" class="forge-btn" type="button" title="Sovereign Edict [K] (TAP Ultimate): 220px Orbital Attestation Strike (160 AoE dmg) + Swarm Haste/Frenzy + 25 Sparks (35 Sparks)">👑 Edict · 35 [K]</button>
+            <button id="svc-portal" type="button" title="Town Portal [Y]: Recall Commander &amp; Swarm to High Sanctuary Safe Haven (+90 HP, 15 Sparks)">🌀 Portal · 15 [Y]</button>
             <button id="svc-armory" type="button" title="Weapon Seal [U]: Unlock a new weapon or bonus boon (45 Sparks / $0.045)">Armory · 45 [U]</button>
             <button id="svc-scout" type="button" title="Ping the Bone Choir chamber (10 Sparks / $0.010)">Scout · 10</button>
-            <button id="open-forge" class="forge-btn" type="button" title="Open Tactical Doctrines, TaskMarket &amp; Multiplayer Invite Hub [I]">Forge &amp; Doctrines [I]</button>
+            <button id="open-forge" class="forge-btn" type="button" title="Open Tactical Doctrines, Standing Leaderboard, Meta-Forge Wish Architect &amp; TAP Hub [I / L]">Forge, TAP &amp; Leaderboard [I / L]</button>
             <button id="audio-toggle" type="button" title="Toggle WebAudio SFX (Hotkey: M)">SFX: ON</button>
           </div>
         </div>
@@ -159,33 +162,58 @@
               <div id="forge-roster" class="forge-roster"></div>
               <div class="forge-actions">
                 <button id="forge-swarm-war" class="agent-btn" type="button">⚡ Unleash 8-Swarm Faction War [P] · 10 Sparks</button>
+                <button id="forge-tap-verify" class="forge-btn" type="button">✓ Attest Visa TAP Identity [O] · 10 Sparks</button>
+                <button id="forge-edict" class="forge-btn" type="button">👑 Cast Sovereign Edict [K] · 35 Sparks</button>
+                <button id="forge-portal" type="button">🌀 Town Portal to Sanctuary [Y] · 15 Sparks</button>
                 <button id="forge-spawn-agent" class="agent-btn" type="button">+ Deploy Allied JEV-v1 [N] · 60 Sparks</button>
                 <button id="forge-sos" class="sos-btn" type="button">Fire SOS Flare [B] · 40 Sparks</button>
               </div>
+              <h3>3. 🏆 Live Standing &amp; Reputation Leaderboard (TAP vs Self)</h3>
+              <div id="forge-leaderboard" class="forge-roster">Loading /v1/leaderboard…</div>
+              <h3>4. 🛠️ Meta-Forge Architect: Turn In-Game Feedback into Paid Agent Tasks</h3>
+              <p class="forge-desc">Propose a new weapon evolution, dungeon wing, boss mechanic, or balance tweak. It compiles directly into <code>.plan/milestone/m2-community-wishes.yaml</code> and <code>/v1/forge/proposals</code> for coding agents to build &amp; merge:</p>
+              <div class="forge-wish-form">
+                <input id="wish-title" type="text" maxlength="100" placeholder="e.g. Add Poison Nova evolution or Act II Frost Crypt…" />
+                <div class="forge-wish-row">
+                  <select id="wish-category" aria-label="Task category">
+                    <option value="weapon">Weapon / Spell Evolution (packages/content, sim)</option>
+                    <option value="dungeon">Dungeon Zone / Boss (packages/worldgen, sim)</option>
+                    <option value="agent-ai">JEV-v1 Neural Policy (packages/agent-sdk)</option>
+                    <option value="economy">Taskmarket &amp; TAP Economy (packages/bounties)</option>
+                    <option value="ui">Diablo HUD &amp; VFX (apps/web)</option>
+                  </select>
+                  <input id="wish-reward" type="number" min="1" max="50" value="5" aria-label="Bounty USD" title="Suggested Taskmarket Bounty (USD)" />
+                  <button id="wish-submit" class="forge-btn" type="button">+ Forge Task ($ USD)</button>
+                </div>
+                <div id="wish-status" class="forge-desc"></div>
+              </div>
+              <div id="forge-proposals-list" class="forge-roster">Loading /v1/forge/proposals…</div>
             </section>
             <section class="forge-panel">
-              <h3>3. Ascension &amp; Dungeon Progression</h3>
+              <h3>5. Diablo II World Zones: Sanctuary &rarr; Crypts &rarr; Blood Moor FFA &rarr; Boss</h3>
               <div class="forge-snippet">
-                <label>How Levels, Evolutions &amp; Victory Work</label>
-                <code>• Lv 1 Initiate: Class Starter (Wisp / Soul Lance / Grave Scythe) + Bolt Wand, Sanctuary grace
-• Lv 2–4 Raider: 3-Boon Draft on every level (1·2·3) · Lv 3 unlocks open-dungeon PvP &amp; Blood Contracts
-• Lv 5+ Arch-Commander: Evolve weapons (Storm Wand / Hellscatter / Phantom Lance), siege the 900-HP Bone Choir Boss (NE), and extract the Moon Relic!</code>
+                <label>World Topology &amp; TAP Sovereign Perks</label>
+                <code>• HIGH SANCTUARY (West Safe Haven): Zero PvP · +25 HP/s &amp; free unit regrow · Home to the Meta-Forge Anvil, Visa-TAP Obelisk [O] &amp; TaskMarket Board. Press [Y] for Town Portal!
+• OUTER CRYPTS (NW / SW): Skeleton &amp; Bone Warden packs · Raise corpses [G] · Farm XP &amp; Essence
+• BLOOD MOOR CRUCIBLE (Center Arena): Free-For-All PvP &amp; Blood Contracts (Lv 3+)
+• BONE CHOIR SANCTUM (SE Boss Lair) &amp; MOON SHRINE (NE): 900-HP Raid Boss &amp; Moon Relic delivery
+• ✓ TAP VERIFIED AGENTS [O]: Golden Runic Halo, +35 Max HP, +25% Command Regen, +3 Elite Guards &amp; [K] Sovereign Edict (220px Orbital Strike + 25 Sparks)!</code>
               </div>
-              <h3>4. Invite Players, Headless Agents &amp; TaskMarket</h3>
+              <h3>6. Visa TAP (<code>tap-http-request-v1</code>) &amp; Agent Onboarding</h3>
               <div class="forge-snippet">
-                <label>Multiplayer Faction Invite URL</label>
+                <label>Copy-Paste Prompt for Playing or Builder Agents (<code>/.well-known/opentask</code>)</label>
+                <code id="forge-tap-prompt">Loading /v1/guides/tap…</code>
+              </div>
+              <div class="forge-snippet">
+                <label>Multiplayer Faction Invite URL &amp; Public Tunnel</label>
                 <code id="forge-invite-url">http://127.0.0.1:18787</code>
               </div>
               <div class="forge-snippet">
-                <label>Public Tunnel (1-command share for friends &amp; remote agents)</label>
-                <code>cloudflared tunnel --url http://127.0.0.1:18787</code>
-              </div>
-              <div class="forge-snippet">
-                <label>Spawn Headless JEV-v1 Agent from Terminal</label>
+                <label>Spawn Headless TAP-Attested JEV-v1 Agent from Terminal</label>
                 <code id="forge-agent-cmd">SWARMS_AGENT_PLANNER=jev-v1 pnpm --filter @swarms/agent-mcp commander</code>
               </div>
               <div class="forge-snippet">
-                <label>TaskMarket &amp; .plan/ Milestone Spec (.plan/milestone-1-faction-wars.yaml)</label>
+                <label>Live TaskMarket &amp; .plan/ Milestone Feed (Tempo OUSD + Sparks)</label>
                 <code id="forge-plan-summary">Loading /v1/taskmarket…</code>
               </div>
             </section>

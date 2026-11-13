@@ -11,6 +11,14 @@ import {
   KeyedTokenBuckets,
   TokenBucket,
 } from "./rate-limit.ts";
+import {
+  buildOpenTaskDiscovery,
+  buildTapAgentGuide,
+  createForgeProposal,
+  type ForgeProposalCategory,
+  listForgeProposals,
+  verifyTapHttpOrSandbox,
+} from "./tap-forge.ts";
 import { type SessionRecord, ZoneRuntime } from "./zone.ts";
 
 const port = Number(process.env.PORT ?? 18787);
@@ -139,9 +147,108 @@ const httpServer = createServer((request, response) => {
     response.writeHead(204, {
       "access-control-allow-origin": corsOrigin(origin, reqHost),
       "access-control-allow-methods": "GET,POST,OPTIONS",
-      "access-control-allow-headers": "content-type",
+      "access-control-allow-headers":
+        "content-type,signature-input,signature,content-digest,signature-agent,x-tap-key-id",
     });
     response.end();
+    return;
+  }
+  const publicOrigin = reqHost ? `http://${reqHost}` : `http://${host}:${port}`;
+  if (url.pathname === "/.well-known/opentask") {
+    return json(response, 200, buildOpenTaskDiscovery(publicOrigin), origin, reqHost);
+  }
+  if (url.pathname === "/v1/guides/tap") {
+    return json(response, 200, buildTapAgentGuide(publicOrigin), origin, reqHost);
+  }
+  if (url.pathname === "/v1/leaderboard") {
+    return json(
+      response,
+      200,
+      {
+        updatedAtTick: runtime.world.tick,
+        factions: runtime.factionWarStatus(),
+        leaders: runtime.leaderboard(),
+      },
+      origin,
+      reqHost,
+    );
+  }
+  if (url.pathname === "/v1/forge/proposals") {
+    if (request.method === "GET") {
+      return json(response, 200, { proposals: listForgeProposals() }, origin, reqHost);
+    }
+    if (request.method === "POST") {
+      let bodyText = "";
+      request.on("data", (chunk) => {
+        if (bodyText.length < 32_768) bodyText += String(chunk);
+      });
+      request.on("end", () => {
+        try {
+          const payload = JSON.parse(bodyText || "{}") as {
+            title?: string;
+            summary?: string;
+            category?: ForgeProposalCategory;
+            authorName?: string;
+            authorTier?: "tap" | "self" | "unverified";
+            rewardUsd?: number;
+          };
+          const repoRoot = resolve(new URL("../../../", import.meta.url).pathname);
+          const created = createForgeProposal(
+            {
+              title: String(payload.title ?? ""),
+              summary: String(payload.summary ?? ""),
+              ...(payload.category ? { category: payload.category } : {}),
+              ...(payload.authorName ? { authorName: payload.authorName } : {}),
+              ...(payload.authorTier ? { authorTier: payload.authorTier } : {}),
+              ...(payload.rewardUsd !== undefined ? { rewardUsd: Number(payload.rewardUsd) } : {}),
+            },
+            repoRoot,
+          );
+          runtime.pushFeed(
+            runtime.world.tick,
+            "forge_proposal",
+            `Meta-Forge Wish [${created.id}]: "${created.title}" ($${created.rewardUsd} bounty queued)`,
+          );
+          return json(response, 201, { ok: true, proposal: created }, origin, reqHost);
+        } catch (err) {
+          return json(
+            response,
+            400,
+            { ok: false, error: err instanceof Error ? err.message : "invalid_proposal" },
+            origin,
+            reqHost,
+          );
+        }
+      });
+      return;
+    }
+  }
+  if (url.pathname === "/v1/tap/verify" && request.method === "POST") {
+    let bodyText = "";
+    request.on("data", (chunk) => {
+      if (bodyText.length < 65_536) bodyText += String(chunk);
+    });
+    request.on("end", async () => {
+      const headersRecord: Record<string, string | string[] | undefined> = {};
+      for (const [k, v] of Object.entries(request.headers)) headersRecord[k.toLowerCase()] = v;
+      try {
+        const parsedBody = bodyText ? (JSON.parse(bodyText) as { keyId?: string }) : {};
+        if (!headersRecord["x-tap-key-id"] && parsedBody.keyId) {
+          headersRecord["x-tap-key-id"] = parsedBody.keyId;
+        }
+      } catch {
+        // Ignore non-JSON body
+      }
+      const verified = await verifyTapHttpOrSandbox({
+        headers: headersRecord,
+        body: bodyText,
+        allowSandbox: true,
+      });
+      if (!verified.ok) {
+        return json(response, verified.status, verified, origin, reqHost);
+      }
+      return json(response, 200, verified, origin, reqHost);
+    });
     return;
   }
   if (url.pathname === "/health") return json(response, 200, runtime.health(), origin, reqHost);
@@ -280,6 +387,8 @@ wss.on("connection", (ws, request) => {
           ...(message.resumeToken ? { resumeToken: message.resumeToken } : {}),
           ...(message.character ? { character: message.character } : {}),
           ...(message.faction ? { faction: message.faction } : {}),
+          ...(message.tier ? { tier: message.tier } : {}),
+          ...(message.tapKeyId ? { tapKeyId: message.tapKeyId } : {}),
         });
         const state: ClientState = {
           session,

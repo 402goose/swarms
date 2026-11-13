@@ -17,6 +17,7 @@ import {
   xpForLevel,
 } from "@swarms/content";
 import type {
+  AgentTier,
   CommanderSnapshot,
   EntitySnapshot,
   FactionId,
@@ -99,6 +100,10 @@ export interface CommanderState {
   respawnAtTick: number;
   path: Vec2[];
   trail: Vec2[];
+  tier?: AgentTier;
+  tapKeyId?: string;
+  tapRegistry?: string;
+  kills?: number;
 }
 
 export interface BattleEntity {
@@ -1030,11 +1035,13 @@ export class SimWorld {
     }
     for (const commander of this.commanders.values()) {
       if (commander.alive) {
+        const tapRegenMul = commander.tier === "tap" ? 1.25 : 1;
         commander.command = clamp(
           commander.command +
             COMMANDER.commandRegenPerSecond *
               TICK_SECONDS *
-              CHARACTERS[commander.character].regenMul,
+              CHARACTERS[commander.character].regenMul *
+              tapRegenMul,
           0,
           COMMANDER.maxCommand,
         );
@@ -1223,6 +1230,93 @@ export class SimWorld {
     }
     commander.pendingDrafts += 1;
     return { drafted: true };
+  }
+
+  promoteTapTier(commanderId: string, tapKeyId?: string, tapRegistry?: string): number {
+    const commander = this.commanders.get(commanderId);
+    if (!commander) return 0;
+    const wasTap = commander.tier === "tap";
+    commander.tier = "tap";
+    commander.tapKeyId = tapKeyId ?? `tap_${commander.id.replace(/[^a-zA-Z0-9]/g, "")}`;
+    commander.tapRegistry = tapRegistry ?? "visa-tap-registry";
+    if (!wasTap) {
+      commander.maxHp += 35;
+      commander.hp = Math.min(commander.maxHp, commander.hp + 35);
+      commander.command = COMMANDER.maxCommand;
+    }
+    return this.spawnMercenaries(commanderId, 3);
+  }
+
+  triggerSovereignEdict(commanderId: string): { hits: number; kills: number } {
+    const commander = this.commanders.get(commanderId);
+    if (!commander?.alive || commander.extracted) return { hits: 0, kills: 0 };
+    if (commander.tier !== "tap") {
+      this.promoteTapTier(commanderId);
+    }
+    commander.hasteUntil = Math.max(commander.hasteUntil, this.tick + 240);
+    commander.frenzyUntil = Math.max(commander.frenzyUntil, this.tick + 240);
+    commander.shellUntil = Math.max(commander.shellUntil, this.tick + 150);
+    const radius = 220;
+    const damage = 160;
+    let hits = 0;
+    let kills = 0;
+    const spokes: Vec2[] = [{ x: commander.x, y: commander.y }];
+    for (const entity of this.entities.values()) {
+      if (entity.hp <= 0 || entity.ownerId === commander.id) continue;
+      if (entity.ownerId) {
+        const owner = this.commanders.get(entity.ownerId);
+        if (owner && owner.faction === commander.faction) continue;
+      }
+      if (distance(commander, entity) <= radius) {
+        entity.hp = Math.max(0, entity.hp - damage);
+        entity.lastAttackerCommanderId = commander.id;
+        hits++;
+        if (entity.hp <= 0) kills++;
+        if (spokes.length < 9) spokes.push({ x: entity.x, y: entity.y });
+      }
+    }
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2;
+      this.chainFx.push({
+        points: [
+          { x: commander.x, y: commander.y },
+          {
+            x: commander.x + Math.cos(ang) * (radius * 0.85),
+            y: commander.y + Math.sin(ang) * (radius * 0.85),
+          },
+        ],
+        tick: this.tick,
+        expiresAtTick: this.tick + 18,
+      });
+    }
+    return { hits, kills };
+  }
+
+  recallToSanctuary(commanderId: string): boolean {
+    const commander = this.commanders.get(commanderId);
+    if (!commander?.alive || commander.extracted) return false;
+    const dest = {
+      x: this.entryRect.x + this.entryRect.w * 0.5,
+      y: this.entryRect.y + this.entryRect.h * 0.5,
+    };
+    commander.x = dest.x;
+    commander.y = dest.y;
+    commander.vx = 0;
+    commander.vy = 0;
+    commander.target = { ...dest };
+    commander.path = [];
+    commander.hp = Math.min(commander.maxHp, commander.hp + 90);
+    commander.command = COMMANDER.maxCommand;
+    commander.slowUntil = 0;
+    commander.spawnedAtTick = this.tick;
+    const owned = [...this.entities.values()].filter((e) => e.ownerId === commander.id && e.hp > 0);
+    owned.forEach((unit, idx) => {
+      const ang = (idx / Math.max(1, owned.length)) * Math.PI * 2;
+      unit.x = dest.x + Math.cos(ang) * 38;
+      unit.y = dest.y + Math.sin(ang) * 38;
+      unit.hp = unit.maxHp;
+    });
+    return true;
   }
 
   private spawnUnitFor(commander: CommanderState): boolean {
@@ -2211,6 +2305,7 @@ export class SimWorld {
         if (entity.lastAttackerCommanderId) {
           const killer = this.commanders.get(entity.lastAttackerCommanderId);
           if (killer) {
+            killer.kills = (killer.kills ?? 0) + 1;
             const xp = isBoss
               ? LEVELS.monsterXp.boss
               : isWarden
@@ -2424,6 +2519,11 @@ export class SimWorld {
         ...(this.tick < c.fangUntil ? { fang: c.fangUntil - this.tick } : {}),
         ...(this.tick < c.frenzyUntil ? { frenzy: c.frenzyUntil - this.tick } : {}),
       },
+      ...(c.tier ? { tier: c.tier } : {}),
+      ...(c.tapKeyId ? { tapKeyId: c.tapKeyId } : {}),
+      ...(c.tapRegistry ? { tapRegistry: c.tapRegistry } : {}),
+      ...(c.kills ? { kills: c.kills } : {}),
+      inSanctuary: this.inEntry(c),
     }));
   }
 

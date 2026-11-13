@@ -954,7 +954,13 @@ for (const [selector, service] of [
   ["#svc-sos", "sos"],
   ["#svc-agent", "agent"],
   ["#svc-swarm-war", "swarm_war"],
+  ["#svc-tap", "tap_verify"],
+  ["#svc-edict", "sovereign_edict"],
+  ["#svc-portal", "sanctuary_recall"],
   ["#forge-swarm-war", "swarm_war"],
+  ["#forge-tap-verify", "tap_verify"],
+  ["#forge-edict", "sovereign_edict"],
+  ["#forge-portal", "sanctuary_recall"],
   ["#forge-spawn-agent", "agent"],
   ["#forge-sos", "sos"],
   ["#svc-armory", "armory"],
@@ -974,9 +980,17 @@ for (const [selector, service] of [
 
 const forgeModal = $("#forge-modal");
 const forgeRoster = $("#forge-roster");
+const forgeLeaderboard = $("#forge-leaderboard");
+const forgeProposalsList = $("#forge-proposals-list");
+const forgeTapPrompt = $("#forge-tap-prompt");
 const forgeInviteUrl = $("#forge-invite-url");
 const forgeAgentCmd = $("#forge-agent-cmd");
 const forgePlanSummary = $("#forge-plan-summary");
+const wishTitleInput = $<HTMLInputElement>("#wish-title");
+const wishCategorySelect = $<HTMLSelectElement>("#wish-category");
+const wishRewardInput = $<HTMLInputElement>("#wish-reward");
+const wishSubmitBtn = $<HTMLButtonElement>("#wish-submit");
+const wishStatusEl = $("#wish-status");
 const docAutoMend = $<HTMLInputElement>("#doc-auto-mend");
 const docAutoSos = $<HTMLInputElement>("#doc-auto-sos");
 const docAutoRally = $<HTMLInputElement>("#doc-auto-rally");
@@ -1049,19 +1063,147 @@ function refreshForgeModal(): void {
       row.className = "forge-roster-item";
       const icon = c.faction === "reapers" ? "⚔️" : "🛡";
       const role = c.kind === "agent" ? "JEV-v1 AI" : c.kind === "bot" ? "BOT" : "HUMAN";
+      const tapTag = c.tier === "tap" ? " [✓ TAP]" : c.tier === "self" ? " [SELF]" : "";
       const left = document.createElement("span");
-      left.textContent = `${icon} ${c.name} (${role} · ${c.character ?? "necromancer"})`;
+      left.textContent = `${icon} ${c.name}${tapTag} (${role} · ${c.character ?? "necromancer"})`;
       const right = document.createElement("span");
-      right.textContent = `Lv ${c.level ?? 1} · ${c.unitCount}u · ${c.essence} ess`;
+      right.textContent = `Lv ${c.level ?? 1} · ${c.unitCount}u · ${c.kills ?? 0} kills`;
       row.append(left, right);
       return row;
     }),
   );
 }
 
+function fetchForgeHubData(): void {
+  const apiOrigin =
+    location.port === "15173"
+      ? `http://${location.hostname || "127.0.0.1"}:18787`
+      : location.origin;
+
+  fetch(`${apiOrigin}/v1/leaderboard`)
+    .then((r) => r.json())
+    .then(
+      (data: {
+        leaders?: Array<{
+          rank: number;
+          name: string;
+          faction: string;
+          tier: string;
+          level: number;
+          kills: number;
+          sparks: number;
+          usdValue: number;
+          points: number;
+        }>;
+      }) => {
+        const leaders = data.leaders ?? [];
+        forgeLeaderboard.replaceChildren(
+          ...leaders.slice(0, 8).map((l) => {
+            const row = document.createElement("div");
+            row.className = "forge-roster-item";
+            const left = document.createElement("span");
+            const fIcon = l.faction === "reapers" ? "⚔️" : "🛡";
+            const badge = l.tier === "tap" ? " [✓ TAP]" : l.tier === "self" ? " [SELF]" : "";
+            left.textContent = `#${l.rank} ${fIcon} ${l.name}${badge} (Lv ${l.level})`;
+            const right = document.createElement("span");
+            right.textContent = `${l.points} pts · ${l.kills} kills · ${l.sparks} Sparks ($${l.usdValue.toFixed(3)})`;
+            row.append(left, right);
+            return row;
+          }),
+        );
+      },
+    )
+    .catch(() => {
+      forgeLeaderboard.textContent = "Leaderboard syncing…";
+    });
+
+  fetch(`${apiOrigin}/v1/forge/proposals`)
+    .then((r) => r.json())
+    .then(
+      (data: {
+        proposals?: Array<{
+          id: string;
+          title: string;
+          category: string;
+          rewardUsd: number;
+          authorName: string;
+          authorTier: string;
+          touches: string[];
+        }>;
+      }) => {
+        const list = data.proposals ?? [];
+        forgeProposalsList.replaceChildren(
+          ...list.slice(0, 6).map((p) => {
+            const row = document.createElement("div");
+            row.className = "forge-roster-item";
+            const left = document.createElement("span");
+            const tBadge = p.authorTier === "tap" ? "✓ TAP" : p.authorTier.toUpperCase();
+            left.textContent = `[${p.category}] ${p.title} (by ${p.authorName} · ${tBadge})`;
+            const right = document.createElement("span");
+            right.textContent = `$${p.rewardUsd} USD · ${p.touches[0] ?? ""}`;
+            row.append(left, right);
+            return row;
+          }),
+        );
+      },
+    )
+    .catch(() => {
+      forgeProposalsList.textContent = "Meta-Forge backlog syncing…";
+    });
+
+  fetch(`${apiOrigin}/v1/guides/tap`)
+    .then((r) => r.json())
+    .then((data: { playPrompt?: string; buildPrompt?: string }) => {
+      forgeTapPrompt.textContent = `${data.playPrompt ?? ""}\n\n---\n\n${data.buildPrompt ?? ""}`;
+    })
+    .catch(() => {
+      forgeTapPrompt.textContent = "Visa TAP (tap-http-request-v1): POST /v1/tap/verify";
+    });
+}
+
+wishSubmitBtn.addEventListener("click", () => {
+  const title = wishTitleInput.value.trim();
+  if (title.length < 4) {
+    wishStatusEl.textContent = "Enter at least 4 characters for your game wish / task title.";
+    return;
+  }
+  const self = snapshot?.commanders.find((c) => c.id === snapshot?.selfCommanderId);
+  const apiOrigin =
+    location.port === "15173"
+      ? `http://${location.hostname || "127.0.0.1"}:18787`
+      : location.origin;
+  wishSubmitBtn.disabled = true;
+  fetch(`${apiOrigin}/v1/forge/proposals`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      title,
+      summary: title,
+      category: wishCategorySelect.value,
+      rewardUsd: Number(wishRewardInput.value || 5),
+      authorName: self?.name ?? "Commander",
+      authorTier: self?.tier ?? "unverified",
+    }),
+  })
+    .then((r) => r.json())
+    .then((res: { ok?: boolean; proposal?: { id: string; rewardUsd: number } }) => {
+      wishSubmitBtn.disabled = false;
+      if (res.ok && res.proposal) {
+        wishTitleInput.value = "";
+        wishStatusEl.textContent = `✓ Forged task [${res.proposal.id}] ($${res.proposal.rewardUsd} USD) into .plan/milestone/m2-community-wishes.yaml!`;
+        fetchForgeHubData();
+      }
+    })
+    .catch(() => {
+      wishSubmitBtn.disabled = false;
+      wishStatusEl.textContent = "Failed to submit proposal.";
+    });
+});
+
 $("#open-forge").addEventListener("click", () => {
   forgeModal.hidden = false;
   refreshForgeModal();
+  fetchForgeHubData();
   const apiOrigin =
     location.port === "15173"
       ? `http://${location.hostname || "127.0.0.1"}:18787`
@@ -1303,10 +1445,30 @@ addEventListener("keydown", (event) => {
   if (key === "enter" && !fields.charSelect.hidden) confirmChar();
   if (key === "x") command({ type: "extract" });
   if (key === "h") command({ type: "stop" });
-  if (key === "i" && !event.repeat) {
+  if ((key === "i" || key === "l") && !event.repeat) {
     if (forgeModal.hidden) $("#open-forge").click();
     else forgeModal.hidden = true;
     return;
+  }
+  if (key === "o" && !event.repeat) {
+    sfx.playLevelUp();
+    send({ type: "buyService", idempotencyKey: crypto.randomUUID(), service: "tap_verify" });
+  }
+  if (key === "k" && !event.repeat) {
+    const target = selfPosition();
+    spellFlashes.push({
+      ...target,
+      radius: 220,
+      color: 0xffd75e,
+      started: performance.now(),
+      expires: performance.now() + 650,
+    });
+    sfx.playSpell("chain");
+    send({ type: "buyService", idempotencyKey: crypto.randomUUID(), service: "sovereign_edict" });
+  }
+  if (key === "y" && !event.repeat) {
+    sfx.playSpell("shell");
+    send({ type: "buyService", idempotencyKey: crypto.randomUUID(), service: "sanctuary_recall" });
   }
   if (key === "z" && !event.repeat) {
     send({ type: "buyService", idempotencyKey: crypto.randomUUID(), service: "mend" });
@@ -1582,6 +1744,50 @@ function drawStatic(): void {
           cy,
         ])
         .stroke({ color: tint.color, width: 2, alpha: 0.6 });
+      if (room.id === "entry") {
+        // High Sanctuary Monuments: Forge Anvil (NW), TAP Obelisk (NE), TaskMarket Board (S)
+        const anvilX = cx - tileSize * 2.1;
+        const anvilY = cy - tileSize * 1.1;
+        staticLayer
+          .roundRect(anvilX - 18, anvilY - 12, 36, 24, 4)
+          .fill(0x3a2e21)
+          .stroke({
+            color: 0xf1d36b,
+            width: 2,
+          });
+        const obeliskX = cx + tileSize * 2.1;
+        const obeliskY = cy - tileSize * 1.1;
+        staticLayer
+          .poly([
+            obeliskX,
+            obeliskY - 22,
+            obeliskX + 14,
+            obeliskY + 14,
+            obeliskX - 14,
+            obeliskY + 14,
+          ])
+          .fill(0x2b3e4a)
+          .stroke({ color: 0xffd75e, width: 2 });
+        const monumentStyle = new TextStyle({
+          fontFamily: "Cinzel, Georgia, serif",
+          fontSize: 11,
+          fontWeight: "700",
+          fill: 0xffe380,
+          stroke: { color: 0x000000, width: 3 },
+        });
+        const anvilTxt = new Text({ text: "⚒ FORGE ANVIL [I]", style: monumentStyle });
+        anvilTxt.anchor.set(0.5);
+        anvilTxt.position.set(anvilX, anvilY - 22);
+        labelLayer.addChild(anvilTxt);
+        const tapTxt = new Text({ text: "✓ TAP OBELISK [O]", style: monumentStyle });
+        tapTxt.anchor.set(0.5);
+        tapTxt.position.set(obeliskX, obeliskY - 28);
+        labelLayer.addChild(tapTxt);
+        const portalTxt = new Text({ text: "🌀 SANCTUARY PORTAL [Y]", style: monumentStyle });
+        portalTxt.anchor.set(0.5);
+        portalTxt.position.set(cx, cy + tileSize * 1.65);
+        labelLayer.addChild(portalTxt);
+      }
     } else {
       for (let i = 0; i < 4; i++) {
         const tx = rx + ((hash(room.x + i * 3, room.y) % Math.max(2, room.w - 3)) + 1) * tileSize;
@@ -3054,6 +3260,22 @@ function draw(): void {
           .stroke({ color, width: 1.5, alpha: 0.45 });
       }
       if (entity.kind === "commander") {
+        if (cmdRec?.tier === "tap") {
+          const haloR = r + 13 + Math.sin(now / 220) * 1.5;
+          dynamicLayer
+            .circle(pos.x, pos.y + r * 0.25, haloR)
+            .stroke({ color: 0xffd75e, width: 2.2, alpha: 0.85 });
+          for (let h = 0; h < 4; h++) {
+            const hAng = now / 650 + (h * Math.PI) / 2;
+            dynamicLayer
+              .circle(
+                pos.x + Math.cos(hAng) * haloR,
+                pos.y + r * 0.25 + Math.sin(hAng) * haloR,
+                2.8,
+              )
+              .fill({ color: 0xfff3b0, alpha: 0.95 });
+          }
+        }
         if (cmdRec?.carryingItemId) {
           dynamicLayer
             .circle(pos.x, pos.y, r + 10 + Math.sin(now / 200) * 2)
@@ -3287,11 +3509,14 @@ function draw(): void {
       const roleText = isSelfPill
         ? "YOU"
         : commander.kind === "agent"
-          ? "AI"
+          ? "JEV"
           : commander.kind === "bot"
             ? "BOT"
             : "PLAYER";
-      const badgeText = factionShort ? `${factionShort} ${roleText}` : roleText;
+      const tapSuffix = commander.tier === "tap" ? " ✓TAP" : "";
+      const badgeText = factionShort
+        ? `${factionShort} ${roleText}${tapSuffix}`
+        : `${roleText}${tapSuffix}`;
       const badgeColor =
         commander.faction === "reapers"
           ? 0xff7a6b

@@ -728,4 +728,74 @@ describe("persistent zone runtime", () => {
     expect(spawnedAgent).toBeDefined();
     expect(spawnedAgent?.faction).toBe("reapers");
   });
+
+  it("verifies TAP standing, executes Sovereign Edict & Town Portal, and ranks leaderboard", async () => {
+    const { verifyTapHttpOrSandbox, createForgeProposal } = await import(
+      "../apps/server/src/tap-forge.ts"
+    );
+    const runtime = new ZoneRuntime();
+    const session = runtime.join({
+      name: "SovereignPaladin",
+      kind: "human",
+      character: "boneknight",
+      faction: "wardens",
+    });
+    const cmdr = runtime.world.commanders.get(session.commanderId)!;
+    const baseMaxHp = cmdr.maxHp;
+
+    // 1. Attest TAP Identity via buyService("tap_verify")
+    const tapRes = runtime.buyService(session, "tap-attest-1", "tap_verify");
+    expect(tapRes.cost).toBe(10);
+    expect(cmdr.tier).toBe("tap");
+    expect(cmdr.maxHp).toBe(baseMaxHp + 35);
+
+    // 2. Move out into the Blood Moor Arena and cast Sovereign Edict
+    cmdr.x = 1100;
+    cmdr.y = 640;
+    const edictRes = runtime.buyService(session, "tap-edict-1", "sovereign_edict");
+    expect(edictRes.cost).toBe(35);
+    expect(edictRes.detail).toContain("Sovereign Edict [✓ TAP]");
+
+    // 3. Town Portal back to the High Sanctuary
+    const portalRes = runtime.buyService(session, "town-portal-1", "sanctuary_recall");
+    expect(portalRes.cost).toBe(15);
+    const snap = runtime.snapshot(session);
+    const selfSnap = snap.commanders.find((c) => c.id === session.commanderId);
+    expect(selfSnap?.inSanctuary).toBe(true);
+    expect(selfSnap?.tier).toBe("tap");
+
+    // 4. Leaderboard includes TAP tier bonus
+    const leaders = runtime.leaderboard();
+    const top = leaders.find((l) => l.commanderId === session.commanderId);
+    expect(top?.tier).toBe("tap");
+    expect(top?.points).toBeGreaterThanOrEqual(150);
+
+    // 5. RFC 9421 TAP signature verifier enforces nonce replay protection
+    const now = Math.floor(Date.now() / 1000);
+    const sigInput = `sig1=("@method" "@authority" "@path");keyid="key_visa_test_1";alg="Ed25519";created=${now};expires=${now + 60};nonce="nonce_unique_101";tag="agent-browser-auth"`;
+    const firstVerify = await verifyTapHttpOrSandbox({
+      headers: { "signature-input": sigInput, signature: "sig1=:dGVzdA==:" },
+    });
+    expect(firstVerify.ok).toBe(true);
+    const replayVerify = await verifyTapHttpOrSandbox({
+      headers: { "signature-input": sigInput, signature: "sig1=:dGVzdA==:" },
+    });
+    expect(replayVerify.ok).toBe(false);
+    if (!replayVerify.ok) {
+      expect(replayVerify.code).toBe("tap_replayed");
+    }
+
+    // 6. Meta-Forge proposal creation
+    const wish = createForgeProposal({
+      title: "Add Necrotic Bone Golem Summon",
+      summary: "Summon a 500-HP Bone Golem when 5 corpses are nearby",
+      category: "weapon",
+      authorName: "SovereignPaladin",
+      authorTier: "tap",
+      rewardUsd: 7,
+    });
+    expect(wish.id).toContain("wish-");
+    expect(wish.touches).toContain("packages/sim/src/**");
+    expect(wish.checkScript).toBe(".plan/checks/weapons-sim.test.mjs");
+  });
 });

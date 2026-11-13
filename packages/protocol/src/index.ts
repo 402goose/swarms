@@ -53,6 +53,9 @@ export type CharacterId = z.infer<typeof CharacterIdSchema>;
 export const FactionIdSchema = z.enum(["wardens", "reapers"]);
 export type FactionId = z.infer<typeof FactionIdSchema>;
 
+export const AgentTierSchema = z.enum(["tap", "self", "unverified"]);
+export type AgentTier = z.infer<typeof AgentTierSchema>;
+
 /** Micro-settlement rate: 1 Spark = $0.001 USD equivalent */
 export const SPARK_USD_RATE = 0.001;
 
@@ -159,6 +162,9 @@ export const ServiceIdSchema = z.enum([
   "sos",
   "agent",
   "swarm_war",
+  "tap_verify",
+  "sovereign_edict",
+  "sanctuary_recall",
 ]);
 export type ServiceId = z.infer<typeof ServiceIdSchema>;
 
@@ -174,6 +180,8 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
       resumeToken: z.string().min(8).max(128).optional(),
       character: CharacterIdSchema.optional(),
       faction: FactionIdSchema.optional(),
+      tier: AgentTierSchema.optional(),
+      tapKeyId: z.string().min(4).max(128).optional(),
     })
     .strict(),
   z
@@ -276,6 +284,12 @@ export interface CommanderSnapshot {
   pvpGraceTicks?: number;
   graceBlockedAtTick?: number;
   respawnAtTick?: number;
+  tier?: AgentTier;
+  tapKeyId?: string;
+  tapRegistry?: string;
+  kills?: number;
+  bountiesCompleted?: number;
+  inSanctuary?: boolean;
 }
 
 export interface PickupSnapshot {

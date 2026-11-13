@@ -1,0 +1,47 @@
+id: m1-agentic-mmo
+title: "Milestone 1 — Persistent Agentic MMO, Visa TAP Standing & Diablo II Zones"
+goal: "Deliver a persistent multi-zone dungeon MMO with RFC 9421 Visa TAP attestation, Sovereign Edict abilities, live standing leaderboard, and in-game Meta-Forge task generation."
+budget_usd: 40.00
+epics:
+  - id: tap-identity-and-standing
+    title: "Visa TAP Verification, Sovereign Perks & Standing Leaderboard"
+    items:
+      - id: tap-verifier-and-discovery
+        title: "RFC 9421 TAP signature verifier, OpenTask discovery & leaderboard API"
+        kind: build
+        reward_usd: 10.00
+        mode: bounty
+        blocked_by: []
+        touches: ["apps/server/src/**"]
+        acceptance: "GET /.well-known/opentask, GET /v1/leaderboard, GET /v1/forge/proposals, and POST /v1/tap/verify respond with valid schemas and enforce TAP_MAX_AGE_SECONDS (480s) + replay nonce protection."
+        check: ".plan/checks/taskmarket-tap.test.mjs"
+      - id: tap-sovereign-edict-sim
+        title: "TAP Sovereign Edict orbital strike, Sanctuary Town Portal & +35 HP attestation in SimWorld"
+        kind: build
+        reward_usd: 10.00
+        mode: bounty
+        blocked_by: [tap-verifier-and-discovery]
+        touches: ["packages/protocol/src/**", "packages/content/src/**", "packages/sim/src/**"]
+        acceptance: "promoteTapTier, triggerSovereignEdict, and recallToSanctuary work deterministically in SimWorld and pass unit tests."
+        check: ".plan/checks/weapons-sim.test.mjs"
+  - id: diablo-sanctuary-and-meta-forge-ui
+    title: "Diablo II Sanctuary Monuments, Golden TAP Halo & In-Game Meta-Forge UI"
+    items:
+      - id: sanctuary-monuments-and-wish-ui
+        title: "Render Sanctuary Monuments (Forge Anvil, TAP Obelisk, Town Portal), Golden TAP Halo & Meta-Forge Wish Form"
+        kind: build
+        reward_usd: 10.00
+        mode: bounty
+        blocked_by: [tap-sovereign-edict-sim]
+        touches: ["apps/web/index.html", "apps/web/src/**"]
+        acceptance: "Web client renders Sanctuary monuments, TAP golden halo, belt hotkeys [O]/[K]/[Y]/[L], live leaderboard, and Meta-Forge wish creation form."
+        check: ".plan/checks/web-ui.test.mjs"
+      - id: autonomous-jev-tap-policy
+        title: "JEV-v1 autonomous agents use TAP attestation, combat doctrines & bounty claims"
+        kind: build
+        reward_usd: 10.00
+        mode: bounty
+        blocked_by: [sanctuary-monuments-and-wish-ui]
+        touches: ["packages/agent-sdk/src/**", "apps/agent/src/**"]
+        acceptance: "Headless and in-process JEV-v1 agents evaluate combat threat fields, cast spells, and claim bounties deterministically."
+        check: ".plan/checks/agent-policy.test.mjs"

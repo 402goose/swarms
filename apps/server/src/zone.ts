@@ -22,6 +22,7 @@ import {
 } from "@swarms/content";
 import type { ZoneStore } from "@swarms/persistence";
 import type {
+  AgentTier,
   ContractDraft,
   ContractSnapshot,
   FactionId,
@@ -320,6 +321,8 @@ export class ZoneRuntime {
     resumeToken?: string;
     character?: CharacterId;
     faction?: FactionId;
+    tier?: AgentTier;
+    tapKeyId?: string;
   }): SessionRecord {
     const character =
       input.character && CHARACTER_IDS.includes(input.character) ? input.character : undefined;
@@ -404,6 +407,12 @@ export class ZoneRuntime {
       ...(character ? { character } : {}),
       ...(faction ? { faction } : {}),
     });
+    if (input.tier === "tap") {
+      this.world.promoteTapTier(commanderId, input.tapKeyId, "visa-production");
+    } else if (input.tier === "self") {
+      const cmdr = this.world.commanders.get(commanderId);
+      if (cmdr) cmdr.tier = "self";
+    }
     this.recordSimEvents(events);
     this.pushFeed(this.world.tick, "joined", `${input.name} entered the dungeon`, commanderId);
     this.checkpoint();
@@ -453,6 +462,8 @@ export class ZoneRuntime {
       kind: "agent",
       character: character ?? characters[idx % characters.length]!,
       faction,
+      tier: idx % 2 === 0 ? "tap" : "self",
+      ...(idx % 2 === 0 ? { tapKeyId: `tap_jev_${faction}_${idx + 1}` } : {}),
     });
     this.inProcessAgents.add(session.commanderId);
     return session;
@@ -621,6 +632,12 @@ export class ZoneRuntime {
       if (service === "agent") return "Allied JEV-v1 Commander deployed to your faction";
       if (service === "swarm_war")
         return "Unleashed 8-Swarm Faction War (Wardens vs Reapers JEV Commanders + Catacomb Surge)";
+      if (service === "tap_verify")
+        return "Visa TAP Attestation verified (RFC 9421): +35 Max HP, +3 Elite Guards & [X] Sovereign Edict unlocked";
+      if (service === "sovereign_edict")
+        return "Sovereign Edict (TAP): Orbital Attestation Strike unleashed + Swarm Haste/Frenzy";
+      if (service === "sanctuary_recall")
+        return "Town Portal: Recalled Commander & Swarm to the High Sanctuary (+90 HP)";
       if (service === "armory") return "Weapon Seal unlocked";
       const boss = this.world.entities.get("boss-bone-choir");
       if (!boss) return "Scout Intel: Bone Choir not found";
@@ -762,6 +779,32 @@ export class ZoneRuntime {
         spawnedNames.length > 0
           ? `Swarm War unleashed: deployed ${spawnedNames.join(", ")} + Catacomb Surge!`
           : "Swarm War surge triggered: 6 JEV commanders already active in the Catacombs!";
+    } else if (service === "tap_verify") {
+      const guards = this.world.promoteTapTier(
+        commander.id,
+        `tap_visa_${commander.id}`,
+        "visa-tap-registry",
+      );
+      appliedDetail = `✓ TAP Verified (key: tap_visa_${commander.id}): +35 Max HP, +${guards} Elite Guards & [X] Sovereign Edict unlocked!`;
+    } else if (service === "sovereign_edict") {
+      const edict = this.world.triggerSovereignEdict(commander.id);
+      let bonusSparks = 0;
+      if (edict.hits > 0 && this.ledger.balance(TREASURY_ACCOUNT) >= 25) {
+        bonusSparks = 25;
+        this.ledger.transfer({
+          from: TREASURY_ACCOUNT,
+          to: session.accountId,
+          amount: bonusSparks,
+          kind: "bounty_payout",
+          ref: `tap-edict:${commander.id}:${idempotencyKey}`,
+          tick: this.world.tick,
+          idempotencyKey: `tap-edict-reward:${session.accountId}:${idempotencyKey}`,
+        });
+      }
+      appliedDetail = `Sovereign Edict [✓ TAP]: Smote ${edict.hits} hostiles (${edict.kills} slain), Swarm Haste+Frenzy active${bonusSparks > 0 ? ` & +${bonusSparks} Sparks minted` : ""}!`;
+    } else if (service === "sanctuary_recall") {
+      this.world.recallToSanctuary(commander.id);
+      appliedDetail = `Town Portal: Recalled ${commander.name} & retinue to High Sanctuary (+90 HP & Full Command)!`;
     }
     const detail = detailFor(appliedDetail);
     this.pushFeed(this.world.tick, "service", `${session.name}: ${detail}`, session.commanderId);
@@ -1198,7 +1241,7 @@ export class ZoneRuntime {
     this.store?.appendEvents(journal);
   }
 
-  private pushFeed(
+  pushFeed(
     tick: number,
     kind: string,
     text: string,
@@ -1243,6 +1286,70 @@ export class ZoneRuntime {
       ...(leadingFaction ? { leadingFaction } : {}),
       sparkUsdRate: SPARK_USD_RATE,
     };
+  }
+
+  leaderboard(): Array<{
+    rank: number;
+    commanderId: string;
+    accountId: string;
+    name: string;
+    kind: "human" | "agent" | "bot";
+    faction: FactionId;
+    character: CharacterId;
+    tier: AgentTier;
+    tapKeyId: string | null;
+    tapRegistry: string | null;
+    level: number;
+    kills: number;
+    unitCount: number;
+    sparks: number;
+    usdValue: number;
+    bountiesCompleted: number;
+    reputationScore: number;
+    points: number;
+    inSanctuary: boolean;
+  }> {
+    const snapshots = this.world.commanderSnapshots();
+    const rows = snapshots.map((c) => {
+      const sparks = this.ledger.balance(c.accountId);
+      const rep = this.contracts.reputationFor(c.accountId);
+      const tier: AgentTier = c.tier ?? (c.kind === "agent" ? "self" : "unverified");
+      const kills = c.kills ?? 0;
+      const bountiesCompleted = rep.completed;
+      const tierBonus = tier === "tap" ? 150 : tier === "self" ? 40 : 0;
+      const points =
+        tierBonus +
+        bountiesCompleted * 100 +
+        kills * 15 +
+        (c.level ?? 1) * 30 +
+        Math.floor(sparks * 0.5);
+      return {
+        rank: 0,
+        commanderId: c.id,
+        accountId: c.accountId,
+        name: c.name,
+        kind: c.kind,
+        faction: c.faction ?? "wardens",
+        character: c.character ?? "necromancer",
+        tier,
+        tapKeyId: c.tapKeyId ?? null,
+        tapRegistry: c.tapRegistry ?? null,
+        level: c.level ?? 1,
+        kills,
+        unitCount: c.unitCount,
+        sparks,
+        usdValue: Number((sparks * SPARK_USD_RATE).toFixed(3)),
+        bountiesCompleted,
+        reputationScore: rep.score,
+        points,
+        inSanctuary: Boolean(c.inSanctuary),
+      };
+    });
+    rows.sort((a, b) => b.points - a.points || b.sparks - a.sparks);
+    rows.forEach((row, idx) => {
+      row.rank = idx + 1;
+    });
+    return rows;
   }
 
   snapshotCore(options: SnapshotOptions = {}): SnapshotCore {
